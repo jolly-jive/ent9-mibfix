@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# inputs and output; the MIBs are Cisco's and must not be committed
+cisco-mibs/
+net-snmp/
+librenms/
+out/
+samples/
