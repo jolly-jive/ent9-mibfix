@@ -144,7 +144,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--no-notifications] [--verify] [-q]
 ```
 
 | Argument | Meaning |
@@ -155,6 +155,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DI
 | `--exclude-dir DIR` | Leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
 | `--archive FILE` | Also pack the files into `FILE` (`.zip`, `.tar.gz`, `.tgz` or `.tar`), in a folder named after the file |
 | `--load-order` | List the files so that each one comes after the modules it imports, instead of by name. For managers and MIB browsers that load MIBs one at a time. `--archive` stores them in the same order |
+| `--no-notifications` | Don't add modules for notifications (see below) |
 | `--verify` | Check with Net-SNMP that the listed files are enough (see below). Exits with status 1 if they are not |
 | `-q`, `--quiet` | Don't show progress (shown only on a terminal) |
 
@@ -171,7 +172,15 @@ line. A summary, and the OIDs that no MIB defines, go to stderr.
   are not in any public MIB, so a few such OIDs are normal. Cisco Small Business
   devices (`1.3.6.1.4.1.9.6.1.101`, CISCOSB-* MIBs) are not covered by cisco-mibs; add
   their MIBs as another `MIB_DIR`.
-- Traps do not appear in a walk. MIBs needed only to decode traps are not found.
+- **Traps do not appear in a walk.** Most Cisco MIBs define their notifications next
+  to the objects they carry, so those MIBs are listed anyway. In addition, a module is
+  listed if one of its notifications (NOTIFICATION-TYPE, or TRAP-TYPE of SMIv1) carries
+  an object of the walk, even if the walk has none of its own objects. Such a device
+  may or may not send that notification: for example, CISCO-WAN-OPTIMIZATION-MIB is
+  added because one of its notifications carries a CPU load object of
+  CISCO-PROCESS-MIB. `--no-notifications` turns this off. Notifications that carry only
+  objects outside `--prefix` (standard MIBs such as IF-MIB), or no objects at all, are
+  not found.
 - **With `--load-order`, modules that import each other** can't be put in an order
   that suits every tool. They are listed next to each other, sorted by name, with a
   warning on stderr. In the current cisco-mibs this happens only with
@@ -191,6 +200,9 @@ of `MIB_DIR` loaded. No second walk is needed. It fails if:
 - Net-SNMP prints a warning with only the listed files that it does not print with all
   of `MIB_DIR`, such as `Cannot find module`.
 
+The notifications of the listed modules that carry an object of the walk are checked
+the same way, so traps can be decoded with the listed files too.
+
 OIDs that no MIB defines are skipped. The check runs at the same time as the
 extraction, so it adds little time. On a terminal, progress is shown on one line.
 
@@ -203,11 +215,11 @@ base.)
 
 | Device | OIDs in the walk | Files listed | With `--exclude-dir /usr/share/snmp/mibs` |
 |---|---|---|---|
-| Catalyst 3850 (IOS-XE 03.07.04E) | 62,838 | **144** (8.6%) | **119** (7.1%) |
-| Catalyst 2960-X (IOS 15.2(6)E) | 29,088 | **93** (5.6%) | **68** (4.1%) |
+| Catalyst 3850 (IOS-XE 03.07.04E) | 62,838 | **146** (8.7%) | **121** (7.2%) |
+| Catalyst 2960-X (IOS 15.2(6)E) | 29,088 | **94** (5.6%) | **69** (4.1%) |
 
 `/usr/share/snmp/mibs` is the Net-SNMP 5.9.4 package of Ubuntu 24.04. `--verify`
-passes for both. Of the 56 files that the 3850 needs and the 2960-X does not, 21 are
+passes for both. Of the 57 files that the 3850 needs and the 2960-X does not, 22 are
 for its built-in wireless controller (AIRESPACE-\*, CISCO-LWAPP-\*).
 
 ## Finding which MIB defines an OID

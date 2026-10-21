@@ -16,6 +16,7 @@ import io
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -83,6 +84,23 @@ class VerifyTest(unittest.TestCase):
         self.assertIn('ciscoEnvMonFanState', {want for want, _ in gaps})
         self.assertTrue(any('CISCO-ENVMON-MIB' in w for w in warnings))
 
+    def test_missing_notification_module_is_found(self):
+        for md in SAMPLES:
+            targets, unresolved, needed = self.extract(md)
+            carried = extract_mibs.notifying(
+                self.index, extract_mibs.walked_objects(self.index, targets))
+            extra = sorted(set(carried) - needed)
+            if extra:
+                break
+        else:
+            self.skipTest('no sample has a notification outside the walked modules')
+        notif_oids = [self.index.resolve(extra[0], n) for n in carried[extra[0]]]
+        gaps, _, _ = self.verify(targets + notif_oids, unresolved, needed)
+        self.assertEqual(sum(gaps.values()), len(notif_oids))
+        with_it, _, _ = extract_mibs.dependencies(self.mods, needed | {extra[0]}, set())
+        gaps, _, _ = self.verify(targets + notif_oids, unresolved, with_it)
+        self.assertEqual(gaps, {})
+
     def test_index_miss_is_found(self):
         # pretend our index knew only the first 7 arcs of an object it found
         for md in SAMPLES:
@@ -121,6 +139,69 @@ class InputTest(unittest.TestCase):
         # what Windows PowerShell 5.1 writes for "snmpwalk ... > walk.txt"
         self.check(self.WALK.encode('utf-16'))
         self.check(codecs.BOM_UTF16_BE + self.WALK.encode('utf-16-be'))
+
+
+OBJ_MIB = """OBJ-MIB DEFINITIONS ::= BEGIN
+IMPORTS OBJECT-TYPE, enterprises FROM SNMPv2-SMI;
+objRoot OBJECT IDENTIFIER ::= { iso 3 6 1 4 1 9 99 }
+objFanState OBJECT-TYPE
+    SYNTAX INTEGER
+    ::= { objRoot 1 }
+END
+"""
+TRAP_MIB = """TRAP-MIB DEFINITIONS ::= BEGIN
+IMPORTS NOTIFICATION-TYPE, enterprises FROM SNMPv2-SMI
+        TRAP-TYPE FROM RFC-1215
+        objFanState FROM OBJ-MIB;
+trapRoot OBJECT IDENTIFIER ::= { iso 3 6 1 4 1 9 98 }
+trapFanFailed NOTIFICATION-TYPE
+    OBJECTS { objFanState, trapOther }
+    STATUS current
+    DESCRIPTION "fan -- not a comment"
+    ::= { trapRoot 0 1 }
+trapV1Fan TRAP-TYPE
+    ENTERPRISE trapRoot
+    VARIABLES { objFanState }
+    ::= 2
+trapUnrelated NOTIFICATION-TYPE
+    OBJECTS { trapOther }
+    STATUS current
+    ::= { trapRoot 0 3 }
+END
+"""
+
+
+class NotificationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        for name, text in (('OBJ-MIB', OBJ_MIB), ('TRAP-MIB', TRAP_MIB)):
+            with open(os.path.join(cls.tmp.name, name + '.my'), 'w') as fh:
+                fh.write(text)
+        cls.mods = extract_mibs.load_modules([cls.tmp.name], cache='')
+        cls.index = extract_mibs.OidIndex(cls.mods)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_scan(self):
+        self.assertEqual(self.mods['TRAP-MIB']['notifs'], {
+            'trapFanFailed': ['objFanState', 'trapOther'],
+            'trapV1Fan': ['objFanState'],
+            'trapUnrelated': ['trapOther']})
+
+    def test_trap_type_oid(self):
+        # RFC 3584: SNMPv2 OID of a TRAP-TYPE is { ENTERPRISE 0 value }
+        self.assertEqual(self.index.resolve('TRAP-MIB', 'trapV1Fan'),
+                         (1, 3, 6, 1, 4, 1, 9, 98, 0, 2))
+
+    def test_notifying(self):
+        targets = [(1, 3, 6, 1, 4, 1, 9, 99, 1, 0)]
+        objects = extract_mibs.walked_objects(self.index, targets)
+        self.assertEqual(objects, {('OBJ-MIB', 'objFanState')})
+        self.assertEqual(extract_mibs.notifying(self.index, objects),
+                         {'TRAP-MIB': ['trapFanFailed', 'trapV1Fan']})
 
 
 def fake_mods(imports):

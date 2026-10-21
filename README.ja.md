@@ -137,7 +137,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--no-notifications] [--verify] [-q]
 ```
 
 | 引数 | 意味 |
@@ -148,6 +148,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DI
 | `--exclude-dir DIR` | `DIR`（サブディレクトリを含む）に既にあるモジュールを除きます。Net-SNMP 付属の標準 MIB などに使います。複数指定できます |
 | `--archive FILE` | ファイルを `FILE`（`.zip`、`.tar.gz`、`.tgz`、`.tar`）にもまとめます。中身はファイル名と同じ名前のフォルダに入ります |
 | `--load-order` | 名前順ではなく、各ファイルを、それが import するモジュールの後になる順で列挙します。MIB を 1 つずつ読み込むマネージャや MIB ブラウザ向けです。`--archive` にも同じ順で格納します |
+| `--no-notifications` | 通知のためのモジュールを追加しません（下記） |
 | `--verify` | 列挙したファイルで足りるかを Net-SNMP で確認します（下記）。足りなければ終了コード 1 で終わります |
 | `-q`、`--quiet` | 進捗を表示しません（進捗は端末の時だけ出ます） |
 
@@ -162,7 +163,13 @@ walk は標準入力か `--input FILE` から読みます。必要なファイ�
 - **どの MIB にも定義が無い OID** はサブツリーごとに表示します。公開 MIB に無いオブジェクトに応答する機器も
   あるので、多少出るのは正常です。Cisco Small Business の機器（`1.3.6.1.4.1.9.6.1.101`、CISCOSB-* MIB）は
   cisco-mibs に含まれていません。その MIB を別の `MIB_DIR` として追加してください。
-- トラップは walk に現れません。トラップの解読にだけ必要な MIB は見つかりません。
+- **トラップは walk に現れません。** Cisco の MIB の多くは、通知を、それが運ぶオブジェクトと同じ MIB に
+  定義しているので、その MIB はもともと列挙されます。さらに、walk に自分のオブジェクトが 1 つも無くても、
+  通知（NOTIFICATION-TYPE、SMIv1 の TRAP-TYPE）が walk のオブジェクトを運ぶモジュールも列挙します。
+  その通知を機器が実際に送るとは限りません。たとえば CISCO-WAN-OPTIMIZATION-MIB は、通知の 1 つが
+  CISCO-PROCESS-MIB の CPU 負荷のオブジェクトを運ぶため追加されます。`--no-notifications` で止められます。
+  `--prefix` の外（IF-MIB などの標準 MIB）のオブジェクトだけを運ぶ通知や、オブジェクトを運ばない通知は
+  見つかりません。
 - **`--load-order` を付けても、互いに import し合うモジュール**は、どのツールでも通る順には並べられません。
   名前順で隣り合わせに並べ、標準エラーに警告を出します。現在の cisco-mibs では `CISCO-LWAPP-AP-MIB` と
   `CISCO-LWAPP-DOT11-MIB` の組だけが該当します。名前順で AP が先になり、これで正しく読めます。
@@ -180,6 +187,9 @@ walk をもう一度取る必要はありません。次の場合に失敗とし
 - 列挙したファイルだけの時に、`MIB_DIR` を全部読み込んだ時には出ない Net-SNMP の警告
   （`Cannot find module` など）が出る。
 
+列挙したモジュールの通知のうち、walk のオブジェクトを運ぶものも同じように確認します。列挙したファイルで
+トラップも解読できるということです。
+
 どの MIB にも定義が無い OID は対象外です。確認は抽出と同時に進めるので、時間はあまり増えません。
 端末では進行状況を 1 行で表示します。
 
@@ -191,11 +201,11 @@ walk をもう一度取る必要はありません。次の場合に失敗とし
 
 | 機器 | walk の OID 数 | 列挙したファイル | `--exclude-dir /usr/share/snmp/mibs` 付き |
 |---|---|---|---|
-| Catalyst 3850（IOS-XE 03.07.04E） | 62,838 | **144**（8.6%） | **119**（7.1%） |
-| Catalyst 2960-X（IOS 15.2(6)E） | 29,088 | **93**（5.6%） | **68**（4.1%） |
+| Catalyst 3850（IOS-XE 03.07.04E） | 62,838 | **146**（8.7%） | **121**（7.2%） |
+| Catalyst 2960-X（IOS 15.2(6)E） | 29,088 | **94**（5.6%） | **69**（4.1%） |
 
 `/usr/share/snmp/mibs` は Ubuntu 24.04 の Net-SNMP 5.9.4 パッケージのものです。どちらも `--verify` は
-成功します。3850 だけが必要とする 56 ファイルのうち 21 は、内蔵の無線コントローラ用
+成功します。3850 だけが必要とする 57 ファイルのうち 22 は、内蔵の無線コントローラ用
 （AIRESPACE-\*、CISCO-LWAPP-\*）です。
 
 ## OID を定義している MIB を調べる

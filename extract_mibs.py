@@ -16,6 +16,9 @@ Reads the walk from stdin or --input FILE. It must be numeric (snmpwalk -On). Pr
 of every MIB file needed, including the modules they import, one per line,
 sorted by name (--load-order: each after the modules it imports). Unresolved OIDs and a summary go to stderr.
 
+Notifications never show up in a walk, so modules with a NOTIFICATION-TYPE or
+TRAP-TYPE that carries a walked object are listed too (--no-notifications: don't).
+
 --verify loads only the listed files into Net-SNMP (snmptranslate) and checks
 that every OID gets the same name as with all of MIB_DIR loaded.
 """
@@ -144,14 +147,15 @@ def write_cache(path, files):
 
 
 def scan_file(p):
-    """(module, imports, defs) of a MIB file, or None if it has no module."""
+    """(module, imports, defs, notifs) of a MIB file, or None if it has no module."""
     tc = smiscan.clean(read(p))
     mod = smiscan.module_name(tc)
     if not mod:
         return None
     imports, _ = smiscan.parse_imports(tc)
     defs = {name: (macro, comps) for name, macro, comps in smiscan.oid_assignments(tc)}
-    return mod, imports, defs
+    notifs = dict(smiscan.notification_objects(tc))
+    return mod, imports, defs, notifs
 
 
 def load_modules(mibdirs, progress=QUIET, cache=None):
@@ -184,8 +188,8 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
             changed = True
         if not entry or entry[0] in mods:
             continue
-        mod, imports, defs = entry
-        mods[mod] = {'path': p, 'imports': imports, 'defs': defs}
+        mod, imports, defs, notifs = entry
+        mods[mod] = {'path': p, 'imports': imports, 'defs': defs, 'notifs': notifs}
     if cache and changed:
         write_cache(cache, cached)
     return mods
@@ -290,6 +294,26 @@ def extract(index, targets):
         else:
             unresolved[oid] = len(prefix)
     return direct, unresolved
+
+
+def walked_objects(index, targets):
+    """(module, name) of the OBJECT-TYPEs that have instances among targets."""
+    objects = set()
+    for oid in targets:
+        prefix, hit = index.match(oid)
+        if len(oid) > len(prefix):
+            objects.update((h[0], h[1]) for h in hit if h[2] == 'OBJECT-TYPE')
+    return objects
+
+
+def notifying(index, objects):
+    """{module: [notifications]} for the notifications that carry any of objects."""
+    found = {}
+    for mod, info in sorted(index.mods.items()):
+        for notif, objs in sorted(info.get('notifs', {}).items()):
+            if any((index.lookup(mod, o), o) in objects for o in objs):
+                found.setdefault(mod, []).append(notif)
+    return found
 
 
 def dependencies(mods, roots, exclude):
@@ -574,6 +598,9 @@ def main():
     ap.add_argument('--verify', action='store_true',
                     help='check with snmptranslate that the listed files name every OID '
                          'as all of MIB_DIR does; exit 1 if not')
+    ap.add_argument('--no-notifications', action='store_true',
+                    help='do not add modules whose notifications (traps) carry walked '
+                         'objects but which define none of the walked OIDs')
     ap.add_argument('-q', '--quiet', action='store_true',
                     help='do not show progress on stderr')
     args = ap.parse_args()
@@ -612,9 +639,13 @@ def main():
         progress.show('reading %s' % d)
         exclude |= module_names(d)
     direct, unresolved = extract(index, targets)
+    progress.show('finding notifications')
+    carried = notifying(index, walked_objects(index, targets))
+    notifiers = {} if args.no_notifications else {
+        m: n for m, n in carried.items() if m not in direct}
     progress.clear()
 
-    needed, skipped, missing = dependencies(mods, direct, exclude)
+    needed, skipped, missing = dependencies(mods, direct | set(notifiers), exclude)
     files = print_files(mods, needed, args.load_order)
     if args.archive:
         write_archive(args.archive, files)
@@ -622,8 +653,8 @@ def main():
     err = sys.stderr
     print('%d OIDs read, %d under %s' % (
         len(oids), len(targets), ', '.join('.'.join(map(str, p)) for p in prefixes)), file=err)
-    print('%d modules define them; %d files in total with imports' % (
-        len(direct), len(files)), file=err)
+    print('%d modules define them; %d more have notifications that carry them; '
+          '%d files in total with imports' % (len(direct), len(notifiers), len(files)), file=err)
     if skipped:
         print('left out (already in --exclude-dir): %s' % ', '.join(sorted(skipped)), file=err)
     if missing:
@@ -641,7 +672,10 @@ def main():
     if args.verify:
         reference = finish_tree(ref_proc, progress,
                                 'verify: loading all MIBs for reference')
-        gaps, warnings, checked = verify(files, needed, targets, unresolved,
+        # the notifications that carry walked objects must get their names too
+        notif_oids = sorted({index.resolve(m, n) for m in needed & set(carried)
+                             for n in carried[m]} - {None})
+        gaps, warnings, checked = verify(files, needed, targets + notif_oids, unresolved,
                                          args.exclude_dir, reference, progress)
         progress.clear()
         if warnings:
@@ -656,9 +690,10 @@ def main():
                 print('  %6d  %s <- %s' % (n, want, got), file=err)
         if gaps or warnings:
             sys.exit(1)
-        print('verify: OK, %d OIDs get the same name as with all MIBs '
-              '(%d not defined by any MIB are skipped)' % (checked, len(targets) - checked),
-              file=err)
+        print('verify: OK, %d OIDs and %d notifications get the same name as with all MIBs '
+              '(%d not defined by any MIB are skipped)' % (
+                  checked - len(notif_oids), len(notif_oids),
+                  len(targets) + len(notif_oids) - checked), file=err)
 
 
 if __name__ == '__main__':

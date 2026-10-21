@@ -110,6 +110,8 @@ OID_HEAD_RE = re.compile(
     r'^\s*([a-z][A-Za-z0-9-]*)\s+(' + '|'.join(DEF_MACROS) + r')\b'
     r'|(?<![A-Za-z0-9-])([a-z][A-Za-z0-9-]*)\s+OBJECT\s+IDENTIFIER\s*(?=::=)', re.M)
 OID_VALUE_RE = re.compile(r'::=\s*\{([^}]*)\}')
+TRAP_RE = re.compile(r'\bENTERPRISE\s+([a-z][A-Za-z0-9-]*).*?::=\s*(\d+)', re.S)
+NOTIF_OBJECTS_RE = re.compile(r'\b(?:OBJECTS|VARIABLES)\s*\{([^}]*)\}')
 OID_COMP_RE = re.compile(r'([A-Za-z][A-Za-z0-9-]*)(?:\s*\(\s*(\d+)\s*\))?|(\d+)')
 
 
@@ -117,15 +119,19 @@ def oid_assignments(text_clean):
     """Yield (name, macro, components) for each OID value assignment.
 
     components is the parsed { ... } value: the first may be a parent name,
-    the rest are numbers. TRAP-TYPE is skipped (its value is not an OID).
+    the rest are numbers. A TRAP-TYPE gets the OID SNMPv2 gives it
+    (RFC 3584): { ENTERPRISE 0 value }.
     """
     heads = list(OID_HEAD_RE.finditer(text_clean))
     for i, m in enumerate(heads):
         name = m.group(1) or m.group(3)
         macro = m.group(2) or 'OBJECT IDENTIFIER'
-        if macro == 'TRAP-TYPE':
-            continue
         end = heads[i + 1].start() if i + 1 < len(heads) else len(text_clean)
+        if macro == 'TRAP-TYPE':
+            t = TRAP_RE.search(text_clean, m.end(), end)
+            if t:
+                yield name, macro, [t.group(1), 0, int(t.group(2))]
+            continue
         v = OID_VALUE_RE.search(text_clean, m.end(), end)
         if not v:
             continue
@@ -142,6 +148,23 @@ def oid_assignments(text_clean):
                 break
         if comps:
             yield name, macro, comps
+
+
+def notification_objects(text_clean):
+    """Yield (name, [objects]) for each NOTIFICATION-TYPE (OBJECTS) and
+    TRAP-TYPE (VARIABLES) that lists objects."""
+    heads = list(OID_HEAD_RE.finditer(text_clean))
+    for i, m in enumerate(heads):
+        if m.group(2) not in ('NOTIFICATION-TYPE', 'TRAP-TYPE'):
+            continue
+        end = text_clean.find('::=', m.end())
+        if end < 0:
+            continue
+        v = NOTIF_OBJECTS_RE.search(text_clean, m.end(), end)
+        if v:
+            objs = _ids(v.group(1))
+            if objs:
+                yield m.group(1), objs
 
 
 def _ids(s):
