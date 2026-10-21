@@ -66,7 +66,7 @@ python3 fix_cisco_mibs.py cisco-mibs out net-snmp/mibs librenms/mibs
 ```
 
 ```
-fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
+fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...] [-q]
 ```
 
 | Argument | Meaning |
@@ -74,6 +74,7 @@ fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
 | `CISCO_MIBS_REPO` | Your clone of cisco/cisco-mibs. It is never modified |
 | `OUT_DIR` | Output directory. It must not exist yet |
 | `EXTRA_MIB_DIR` | Directories to search for standard MIBs that are not in the repository. May be repeated. `v1/` is searched first, then these in the given order |
+| `-q`, `--quiet` | Don't show progress |
 
 The output:
 
@@ -85,6 +86,11 @@ The output:
 | `OUT_DIR/changes.json` | The same, machine-readable (`detail` in English, `detail_ja` in Japanese) |
 
 Modules that could not be found are listed under "Unresolved dependencies" in `CHANGES.md`.
+
+The conversion takes a few minutes. Progress goes to stderr: on a terminal, one line
+rewritten in place (step and percentage, like `[3/8] adding missing dependencies (pass 2): 47% (790/1667)`);
+otherwise, such as when redirected to a log file, one line per step. At the end, the
+number of changes of each kind is printed to stdout as JSON.
 
 ### Where the standard MIBs come from
 
@@ -136,7 +142,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
 ```
 
 | Argument | Meaning |
@@ -147,6 +153,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--archive FILE` | Also pack the files into `FILE` (`.zip`, `.tar.gz`, `.tgz` or `.tar`), in a folder named after the file |
 | `--load-order` | List the files so that each one comes after the modules it imports, instead of by name. For managers and MIB browsers that load MIBs one at a time. `--archive` stores them in the same order |
 | `--verify` | Check with Net-SNMP that the listed files are enough (see below). Exits with status 1 if they are not |
+| `-q`, `--quiet` | Don't show progress (shown only on a terminal) |
 
 The walk is read from stdin. The paths of the needed files go to stdout, one per
 line. A summary, and the OIDs that no MIB defines, go to stderr.
@@ -216,7 +223,7 @@ python3 lookup_mib.py out/mibs < oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
 ```
 
 | Argument | Meaning |
@@ -227,6 +234,7 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--l
 | `--deps` | Instead of the matches, print the files needed to name them, including the modules they import |
 | `--exclude-dir DIR` | With `--deps`, leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
 | `--load-order` | With `--deps`, list the files so that each one comes after the modules it imports, instead of by name |
+| `-q`, `--quiet` | Don't show progress (shown only on a terminal) |
 
 Each match is one tab-separated line:
 

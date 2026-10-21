@@ -117,7 +117,7 @@ def read_queries(stream):
 def main():
     ap = argparse.ArgumentParser(
         usage='%(prog)s MIB_DIR [MIB_DIR ...] [QUERY ...] '
-              '[--deps [--exclude-dir DIR] [--load-order] | --detail]',
+              '[--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]',
         description='Tell which MIB module and file define an OID or a name. '
                     'With no QUERY, reads one per line from stdin.')
     ap.add_argument('args', nargs='+', metavar='MIB_DIR|QUERY',
@@ -137,6 +137,8 @@ def main():
     ap.add_argument('--load-order', action='store_true',
                     help='with --deps, list the files so that each comes after the ones '
                          'it imports (default: by name)')
+    ap.add_argument('-q', '--quiet', action='store_true',
+                    help='do not show progress on stderr')
     args = ap.parse_args()
 
     n = 0
@@ -157,7 +159,7 @@ def main():
             sys.exit('error: give a QUERY or pipe queries into stdin')
         queries = list(read_queries(sys.stdin))
 
-    progress = extract_mibs.Progress()
+    progress = extract_mibs.Progress(quiet=args.quiet)
     mods = extract_mibs.load_modules(mibdirs, progress)
     progress.show('indexing OIDs')
     lookup = Lookup(mods, extract_mibs.OidIndex(mods))

@@ -50,9 +50,9 @@ def read(p):
 class Progress:
     """One status line on stderr, rewritten in place. Silent unless stderr is a tty."""
 
-    def __init__(self, stream=sys.stderr):
+    def __init__(self, stream=sys.stderr, quiet=False):
         self.stream = stream
-        self.on = stream.isatty()
+        self.on = not quiet and stream.isatty()
         self.last = 0
 
     def show(self, msg, force=True):
@@ -514,6 +514,8 @@ def main():
     ap.add_argument('--verify', action='store_true',
                     help='check with snmptranslate that the listed files name every OID '
                          'as all of MIB_DIR does; exit 1 if not')
+    ap.add_argument('-q', '--quiet', action='store_true',
+                    help='do not show progress on stderr')
     args = ap.parse_args()
     prefixes = args.prefix or [parse_prefix(p) for p in DEFAULT_PREFIXES]
 
@@ -535,7 +537,7 @@ def main():
         sys.exit('error: no numeric OIDs in the input; run snmpwalk with -On')
     targets = sorted({o for o in oids if any(o[:len(p)] == p for p in prefixes)})
 
-    progress = Progress()
+    progress = Progress(quiet=args.quiet)
     if args.verify:
         # the reference tree takes as long as reading the MIBs, so build it meanwhile
         ref_path = args.mibdirs + [s for d in args.exclude_dir for s in subdirs(d)]

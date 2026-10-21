@@ -61,7 +61,7 @@ python3 fix_cisco_mibs.py cisco-mibs out net-snmp/mibs librenms/mibs
 ```
 
 ```
-fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
+fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...] [-q]
 ```
 
 | 引数 | 意味 |
@@ -69,6 +69,7 @@ fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
 | `CISCO_MIBS_REPO` | cisco/cisco-mibs を clone したディレクトリ。変更はしません |
 | `OUT_DIR` | 出力先。既に存在する場合は中止します |
 | `EXTRA_MIB_DIR` | リポジトリに無い標準 MIB を探すディレクトリ。複数指定できます。`v1/` を最初に探し、次にこれらを指定順に探します |
+| `-q`、`--quiet` | 進捗を表示しません |
 
 出力：
 
@@ -80,6 +81,11 @@ fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
 | `OUT_DIR/changes.json` | 同じ内容の機械可読版（`detail` が英語、`detail_ja` が日本語） |
 
 見つからなかったモジュールは、`CHANGES.md` の「未解決の依存」に出ます。
+
+変換には数分かかります。進捗は標準エラーに出します。端末では 1 行を書き換えながら、工程と割合を
+表示します（`[3/8] adding missing dependencies (pass 2): 47% (790/1667)` のように）。ログファイルへの
+リダイレクトなど端末でない時は、工程ごとに 1 行ずつ出します。最後に、種類ごとの変更件数を JSON で
+標準出力に出します。
 
 ### 標準 MIB の入手先
 
@@ -129,7 +135,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
 ```
 
 | 引数 | 意味 |
@@ -140,6 +146,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--archive FILE` | ファイルを `FILE`（`.zip`、`.tar.gz`、`.tgz`、`.tar`）にもまとめます。中身はファイル名と同じ名前のフォルダに入ります |
 | `--load-order` | 名前順ではなく、各ファイルを、それが import するモジュールの後になる順で列挙します。MIB を 1 つずつ読み込むマネージャや MIB ブラウザ向けです。`--archive` にも同じ順で格納します |
 | `--verify` | 列挙したファイルで足りるかを Net-SNMP で確認します（下記）。足りなければ終了コード 1 で終わります |
+| `-q`、`--quiet` | 進捗を表示しません（進捗は端末の時だけ出ます） |
 
 walk は標準入力から読みます。必要なファイルのパスを 1 行に 1 つ標準出力に出し、
 集計と、どの MIB にも定義が無い OID を標準エラーに出します。
@@ -203,7 +210,7 @@ python3 lookup_mib.py out/mibs < oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
 ```
 
 | 引数 | 意味 |
@@ -214,6 +221,7 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--l
 | `--deps` | 結果の代わりに、名前を付けるのに必要なファイルを、import するモジュールも含めて表示します |
 | `--exclude-dir DIR` | `--deps` と一緒に使い、`DIR` かその下のディレクトリにすでにあるモジュールを除きます。Net-SNMP 付属の標準 MIB などです。複数指定できます |
 | `--load-order` | `--deps` と一緒に使い、名前順ではなく、各ファイルを、それが import するモジュールの後になる順で表示します |
+| `-q`、`--quiet` | 進捗を表示しません（進捗は端末の時だけ出ます） |
 
 結果は 1 件ごとにタブ区切りの 1 行です。
 

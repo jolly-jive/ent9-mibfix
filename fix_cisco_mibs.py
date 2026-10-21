@@ -4,7 +4,7 @@
 """Turn Cisco's public MIBs (v2/) into a self-contained set that loads cleanly.
 
 Usage:
-    python3 fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]
+    python3 fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...] [-q]
 
 CISCO_MIBS_REPO  a clone of https://github.com/cisco/cisco-mibs
 OUT_DIR          created by this script (aborts if it exists). Writes one
@@ -12,9 +12,14 @@ OUT_DIR          created by this script (aborts if it exists). Writes one
                  change to OUT_DIR/CHANGES.md, CHANGES.ja.md and changes.json
 EXTRA_MIB_DIR    where to look for standard MIBs that v2/ imports but Cisco
                  does not ship (e.g. Net-SNMP's mibs/). May be repeated
+-q, --quiet      do not show progress on stderr
+
+Prints a count of changes by kind (JSON) to stdout. Progress goes to stderr:
+one line rewritten in place on a terminal, otherwise one line per step.
 
 The source repository is never modified.
 """
+import argparse
 import json
 import os
 import re
@@ -22,9 +27,41 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import extract_mibs  # noqa: E402
 import smiscan  # noqa: E402
 
 CHANGES = []
+
+
+class Steps(extract_mibs.Progress):
+    """Progress as "[n/N] step: 47% (i/total)", rewritten in place on a terminal.
+
+    Off a terminal (e.g. a log file), only the step titles are printed, one per line.
+    """
+
+    def __init__(self, total, stream=sys.stderr, quiet=False):
+        super().__init__(stream, quiet)
+        self.lines = not quiet and not self.on
+        self.total, self.n, self.title = total, 0, ''
+
+    def step(self, title):
+        self.n += 1
+        self.title = '[%d/%d] %s' % (self.n, self.total, title)
+        if self.lines:
+            self.stream.write(self.title + '...\n')
+            self.stream.flush()
+        self.show(self.title)
+
+    def each(self, items, what=''):
+        """Yield the items, showing how far through them we are."""
+        items = list(items)
+        for i, x in enumerate(items):
+            self.show('%s%s: %d%% (%d/%d)' % (self.title, what, i * 100 // len(items), i, len(items)),
+                      force=False)
+            yield x
+
+
+PROGRESS = Steps(0, quiet=True)
 
 # Messages are written in English here. Their Japanese versions (for
 # CHANGES.ja.md) are in messages.ja.json, keyed by the English text.
@@ -82,9 +119,9 @@ def header_info(text):
 # 1. choose one file per module, name it after the module
 # --------------------------------------------------------------------------
 
-def collect(srcdir, pattern=r'\.my$'):
+def collect(srcdir, pattern=r'\.my$', what=''):
     out = {}
-    for f in sorted(os.listdir(srcdir)):
+    for f in PROGRESS.each(sorted(os.listdir(srcdir)), what):
         p = os.path.join(srcdir, f)
         if not os.path.isfile(p) or not re.search(pattern, f):
             continue
@@ -137,13 +174,15 @@ def add_old_cisco_modules(v1dir, outdir):
 def add_missing_dependencies(outdir, search_dirs):
     pool = {}
     for d in search_dirs:
-        for mod, cands in collect(d, r'').items():
+        for mod, cands in collect(d, r'', ' (reading %s)' % d).items():
             cands.sort(reverse=True)
             pool.setdefault(mod, (d, cands[0][2]))
+    passes = 0
     while True:
+        passes += 1
         present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
         needed = {}
-        for f in os.listdir(outdir):
+        for f in PROGRESS.each(os.listdir(outdir), ' (pass %d)' % passes):
             if not f.endswith('.my'):
                 continue
             info = smiscan.scan(read(os.path.join(outdir, f)))
@@ -170,7 +209,7 @@ def add_missing_dependencies(outdir, search_dirs):
 def report_unresolved_dependencies(outdir):
     present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
     needed = {}
-    for f in os.listdir(outdir):
+    for f in PROGRESS.each(os.listdir(outdir)):
         if f.endswith('.my'):
             for mod in set(smiscan.scan(read(os.path.join(outdir, f)))['imports'].values()):
                 if mod not in present:
@@ -285,7 +324,7 @@ def code_mask(text):
 
 
 def generic_fixes(outdir):
-    for f in sorted(os.listdir(outdir)):
+    for f in PROGRESS.each(sorted(os.listdir(outdir))):
         if not f.endswith('.my'):
             continue
         mod = f[:-3]
@@ -418,7 +457,7 @@ def insert_import(text, sym, mod):
 
 def fix_imports(outdir):
     mods = {}
-    for f in sorted(os.listdir(outdir)):
+    for f in PROGRESS.each(sorted(os.listdir(outdir)), ' (reading)'):
         if f.endswith('.my'):
             info = smiscan.scan(read(os.path.join(outdir, f)))
             if info['module']:
@@ -501,27 +540,47 @@ def write_changes_md(path, ja=False):
 
 
 def main():
-    if len(sys.argv) < 3:
-        sys.exit('usage: fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...]')
-    repo, outdir = sys.argv[1], sys.argv[2]
-    extra = sys.argv[3:]
+    global PROGRESS
+    ap = argparse.ArgumentParser(
+        description="Turn Cisco's public MIBs (v2/) into a self-contained set that loads cleanly.")
+    ap.add_argument('repo', metavar='CISCO_MIBS_REPO',
+                    help='a clone of https://github.com/cisco/cisco-mibs (never modified)')
+    ap.add_argument('outdir', metavar='OUT_DIR',
+                    help='created by this script (aborts if it exists)')
+    ap.add_argument('extra', nargs='*', metavar='EXTRA_MIB_DIR',
+                    help="where to look for standard MIBs that v2/ imports but Cisco "
+                         "does not ship, e.g. Net-SNMP's mibs/")
+    ap.add_argument('-q', '--quiet', action='store_true',
+                    help='do not show progress on stderr')
+    args = ap.parse_args()
+    repo, outdir, extra = args.repo, args.outdir, args.extra
     if not os.path.isdir(os.path.join(repo, 'v2')):
         sys.exit(f'{repo}/v2 not found. Give a clone of https://github.com/cisco/cisco-mibs')
     if os.path.exists(outdir):
         sys.exit(f'{outdir} already exists. Will not overwrite')
     mibdir = os.path.join(outdir, 'mibs')
     os.makedirs(mibdir)
+    PROGRESS = Steps(8, quiet=args.quiet)
+    PROGRESS.step('selecting modules from v2/')
     select_modules(os.path.join(repo, 'v2'), mibdir)
+    PROGRESS.step('adding OLD-CISCO-* modules from v1/')
     add_old_cisco_modules(os.path.join(repo, 'v1'), mibdir)
+    PROGRESS.step('adding missing dependencies')
     add_missing_dependencies(mibdir, [os.path.join(repo, 'v1')] + extra)
+    PROGRESS.step('applying specific patches')
     specific_patches(mibdir)
+    PROGRESS.step('applying generic fixes')
     generic_fixes(mibdir)
+    PROGRESS.step('fixing IMPORTS')
     fix_imports(mibdir)
+    PROGRESS.step('checking for unresolved dependencies')
     report_unresolved_dependencies(mibdir)
+    PROGRESS.step('writing change logs')
     with open(os.path.join(outdir, 'changes.json'), 'w', encoding='utf-8') as fh:
         json.dump(CHANGES, fh, indent=1, ensure_ascii=False)
     write_changes_md(os.path.join(outdir, 'CHANGES.md'))
     write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), ja=True)
+    PROGRESS.clear()
     kinds = {}
     for c in CHANGES:
         kinds[c['kind']] = kinds.get(c['kind'], 0) + 1
