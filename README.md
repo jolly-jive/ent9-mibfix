@@ -49,6 +49,8 @@ Every change is logged in `CHANGES.md` (English), `CHANGES.ja.md` (Japanese) and
 - Standard MIBs that `v2/` imports but Cisco does not ship. The `mibs/` directories
   of Net-SNMP and LibreNMS cover all of them (see below).
 
+On Windows, see [Windows](#windows).
+
 ## Usage
 
 ```sh
@@ -142,12 +144,13 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
 ```
 
 | Argument | Meaning |
 |---|---|
 | `MIB_DIR` | Directory of MIBs, normally `out/mibs`. May be repeated (for example, to add MIBs that Cisco distributes elsewhere). If several define the same module, the first one wins |
+| `-i`, `--input FILE` | Read the walk from `FILE` instead of stdin. UTF-8, Latin-1, and UTF-16 with a BOM are accepted |
 | `--prefix OID` | Only look at OIDs under this prefix. May be repeated. Default: `1.3.6.1.4.1.9` and `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | Leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
 | `--archive FILE` | Also pack the files into `FILE` (`.zip`, `.tar.gz`, `.tgz` or `.tar`), in a folder named after the file |
@@ -155,7 +158,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--verify` | Check with Net-SNMP that the listed files are enough (see below). Exits with status 1 if they are not |
 | `-q`, `--quiet` | Don't show progress (shown only on a terminal) |
 
-The walk is read from stdin. The paths of the needed files go to stdout, one per
+The walk is read from stdin, or from `--input FILE`. The paths of the needed files go to stdout, one per
 line. A summary, and the OIDs that no MIB defines, go to stderr.
 
 - **Use `-On`.** Only numeric OIDs are read. If the input has symbolic OIDs
@@ -220,16 +223,18 @@ python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --exclude-dir /usr/share/snmp/mibs
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --load-order
 python3 lookup_mib.py out/mibs < oids.txt
+python3 lookup_mib.py out/mibs --input oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ... | -i FILE] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
 ```
 
 | Argument | Meaning |
 |---|---|
 | `MIB_DIR` | Directory of MIBs, normally `out/mibs`. The leading arguments that are directories are `MIB_DIR`s; the rest are queries |
 | `QUERY` | A numeric OID, a name (`ifDescr`), a module-qualified name (`IF-MIB::ifDescr`), or either with an instance (`ifDescr.1`). With no `QUERY`, one is read per line from stdin (the first word of each line, so `snmpwalk -On` output works too) |
+| `-i`, `--input FILE` | Read the queries from `FILE` instead of stdin, in the same way. Not together with `QUERY` |
 | `--detail` | Also print each definition (`SYNTAX`, `MAX-ACCESS`, `DESCRIPTION` and so on) |
 | `--deps` | Instead of the matches, print the files needed to name them, including the modules they import |
 | `--exclude-dir DIR` | With `--deps`, leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
@@ -250,8 +255,50 @@ the exit status is then 1.
 ### Cache
 
 `extract_mibs.py` and `lookup_mib.py` keep what they read from the MIB files in
-`~/.cache/ent9-mibfix/` (or `$XDG_CACHE_HOME/ent9-mibfix/`). The next run reads only
+`~/.cache/ent9-mibfix/` (or `$XDG_CACHE_HOME/ent9-mibfix/`; on Windows,
+`%LOCALAPPDATA%\ent9-mibfix\`). The next run reads only
 the files whose size or time changed. Deleting the folder is always safe.
+
+## Windows
+
+### With WSL (recommended)
+
+Everything in this README works as written in
+[WSL](https://learn.microsoft.com/windows/wsl/install), including `snmpbulkwalk` and
+`--verify`:
+
+```sh
+# In PowerShell: wsl --install, then in Ubuntu:
+sudo apt install python3 git snmp
+```
+
+WSL reads files under `/mnt/c` slowly, so keep the clones and `out/` in your WSL home
+directory. To use the results in Windows, write the archive to a Windows folder, for
+example `--archive /mnt/c/Users/YOU/Desktop/c3850.zip`, or open
+`\\wsl$\Ubuntu\home\YOU` in Explorer.
+
+### Without WSL
+
+With [Python for Windows](https://www.python.org/downloads/windows/), the three
+scripts also run in PowerShell or the Command Prompt, with these differences:
+
+- Run them with `py` instead of `python3`, and get the repositories with
+  [Git for Windows](https://git-scm.com/download/win) (the same `git` commands work).
+- PowerShell has no `<`. Give the walk with `--input FILE` instead, or pipe it.
+  A file saved with `>` in Windows PowerShell 5.1 is UTF-16; it is read as is.
+- `--verify` does not work, because it needs Net-SNMP's `snmptranslate`. Net-SNMP has
+  no recent official build for Windows, so take the walk itself on WSL or a Linux host,
+  and copy the file.
+
+```powershell
+py fix_cisco_mibs.py cisco-mibs out net-snmp\mibs librenms\mibs
+py extract_mibs.py out\mibs --input walk.txt --load-order --archive c3850.zip
+py lookup_mib.py out\mibs ciscoEnvMonFanState --deps
+```
+
+Checked with Python 3.12 for Windows in Windows PowerShell 5.1 and PowerShell 7: the
+output is the same as on Linux, and `fix_cisco_mibs.py` writes byte-identical files.
+WSL is still the main supported environment.
 
 ## Test results
 

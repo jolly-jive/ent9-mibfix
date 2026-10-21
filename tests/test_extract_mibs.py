@@ -10,6 +10,7 @@ samples/*.md: one file per device, with the snmpwalk -On output in the first
 
 Run: python3 -m unittest discover tests
 """
+import codecs
 import glob
 import io
 import os
@@ -96,6 +97,30 @@ class VerifyTest(unittest.TestCase):
         owner = self.index.match(oid)[1][0][0]
         gaps, _, _ = self.verify([oid], {oid: 7}, needed - {owner})
         self.assertEqual(sum(gaps.values()), 1)
+
+
+class InputTest(unittest.TestCase):
+    WALK = ('.1.3.6.1.4.1.9.2.1.1.0 = STRING: "x"\r\n'
+            '1.3.6.1.4.1.9.9.13.1.3.1.3.1 = Hex-STRING: 00 01\r\n'
+            '02 03\r\n'
+            'SNMPv2-SMI::enterprises.9.1 = INTEGER: 1\r\n')
+    WANT = ([(1, 3, 6, 1, 4, 1, 9, 2, 1, 1, 0),
+             (1, 3, 6, 1, 4, 1, 9, 9, 13, 1, 3, 1, 3, 1)], 1)
+
+    def check(self, data):
+        self.assertEqual(extract_mibs.read_walk(
+            io.StringIO(extract_mibs.decode_input(data), newline=None)), self.WANT)
+
+    def test_plain(self):
+        self.check(self.WALK.encode('ascii'))
+
+    def test_utf8_bom(self):
+        self.check(self.WALK.encode('utf-8-sig'))
+
+    def test_utf16_bom(self):
+        # what Windows PowerShell 5.1 writes for "snmpwalk ... > walk.txt"
+        self.check(self.WALK.encode('utf-16'))
+        self.check(codecs.BOM_UTF16_BE + self.WALK.encode('utf-16-be'))
 
 
 def fake_mods(imports):

@@ -6,12 +6,13 @@
 Usage:
     snmpbulkwalk -On ... HOST 1.3.6.1.4.1 | python3 extract_mibs.py MIB_DIR [...] [options]
     python3 extract_mibs.py MIB_DIR [...] [options] < walk.txt
+    python3 extract_mibs.py MIB_DIR [...] [options] --input walk.txt
 
 MIB_DIR  a directory of MIBs that loads cleanly, such as OUT_DIR/mibs written
          by fix_cisco_mibs.py. May be repeated; if several directories define
          the same module, the first one wins
 
-Reads the walk from stdin. It must be numeric (snmpwalk -On). Prints the path
+Reads the walk from stdin or --input FILE. It must be numeric (snmpwalk -On). Prints the path
 of every MIB file needed, including the modules they import, one per line,
 sorted by name (--load-order: each after the modules it imports). Unresolved OIDs and a summary go to stderr.
 
@@ -19,7 +20,9 @@ sorted by name (--load-order: each after the modules it imports). Unresolved OID
 that every OID gets the same name as with all of MIB_DIR loaded.
 """
 import argparse
+import codecs
 import heapq
+import io
 import os
 import pickle
 import re
@@ -47,13 +50,33 @@ def read(p):
         return fh.read()
 
 
+def enable_vt(stream):
+    """True if stream's terminal handles escape sequences (on Windows, turn them on)."""
+    if os.name != 'nt':
+        return True
+    try:
+        import ctypes
+        import msvcrt
+        kernel32 = ctypes.windll.kernel32
+        handle = msvcrt.get_osfhandle(stream.fileno())
+        mode = ctypes.c_ulong()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        return bool(mode.value & 4 or kernel32.SetConsoleMode(handle, mode.value | 4))
+    except Exception:
+        return False
+
+
 class Progress:
     """One status line on stderr, rewritten in place. Silent unless stderr is a tty."""
 
     def __init__(self, stream=sys.stderr, quiet=False):
         self.stream = stream
         self.on = not quiet and stream.isatty()
+        self.vt = self.on and enable_vt(stream)
         self.last = 0
+        self.width = 0  # length of the line shown, to blank it without escapes
 
     def show(self, msg, force=True):
         if not self.on:
@@ -62,12 +85,20 @@ class Progress:
         if not force and now - self.last < 0.2:
             return
         self.last = now
-        self.stream.write('\r\033[K' + msg)
+        if self.vt:
+            self.stream.write('\r\033[K' + msg)
+        else:
+            self.stream.write('\r' + msg.ljust(self.width))
+            self.width = len(msg)
         self.stream.flush()
 
     def clear(self):
         if self.on:
-            self.stream.write('\r\033[K')
+            if self.vt:
+                self.stream.write('\r\033[K')
+            else:
+                self.stream.write('\r' + ' ' * self.width + '\r')
+                self.width = 0
             self.stream.flush()
 
 
@@ -79,7 +110,9 @@ QUIET = Progress(open(os.devnull, 'w'))
 # --------------------------------------------------------------------------
 
 def cache_path():
-    base = os.environ.get('XDG_CACHE_HOME') or os.path.join(os.path.expanduser('~'), '.cache')
+    base = (os.environ.get('XDG_CACHE_HOME')
+            or (os.name == 'nt' and os.environ.get('LOCALAPPDATA'))
+            or os.path.join(os.path.expanduser('~'), '.cache'))
     return os.path.join(base, 'ent9-mibfix', 'modules.pickle')
 
 
@@ -445,6 +478,30 @@ def verify(files, modules, targets, unresolved, exclude_dirs, reference, progres
 # walk input
 # --------------------------------------------------------------------------
 
+def decode_input(data):
+    """Text of input bytes. Windows PowerShell 5.1 saves "> file" as UTF-16 with a BOM."""
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode('utf-16')
+    if data.startswith(codecs.BOM_UTF8):
+        data = data[len(codecs.BOM_UTF8):]
+    return data.decode('latin-1')
+
+
+def open_input(path):
+    """Lines of FILE, or of stdin when path is None or '-', in any of the encodings above."""
+    if path in (None, '-'):
+        data = sys.stdin.buffer.read()
+    else:
+        with open(path, 'rb') as fh:
+            data = fh.read()
+    return io.StringIO(decode_input(data), newline=None)
+
+
+def stdin_wanted(path):
+    """True if input comes from stdin and nothing is piped into it."""
+    return path in (None, '-') and sys.stdin.isatty()
+
+
 def read_walk(stream):
     """Return (numeric OIDs, count of symbolic OID lines)."""
     oids, symbolic = [], 0
@@ -496,10 +553,13 @@ def write_archive(path, files):
 def main():
     ap = argparse.ArgumentParser(
         description='List the MIB files needed to name the OIDs in an snmpwalk '
-                    '(read from stdin, numeric: snmpwalk -On).')
+                    '(read from stdin or --input, numeric: snmpwalk -On).')
     ap.add_argument('mibdirs', nargs='+', metavar='MIB_DIR',
                     help='directory of MIBs, e.g. OUT_DIR/mibs from fix_cisco_mibs.py; '
                          'the first one wins when several define a module')
+    ap.add_argument('-i', '--input', metavar='FILE',
+                    help='read the walk from FILE instead of stdin '
+                         '(UTF-8, Latin-1 or UTF-16 with a BOM)')
     ap.add_argument('--prefix', action='append', type=parse_prefix, metavar='OID',
                     help='only look at OIDs under this prefix; may be repeated '
                          '(default: %s)' % ' and '.join(DEFAULT_PREFIXES))
@@ -522,14 +582,16 @@ def main():
     for d in args.mibdirs:
         if not os.path.isdir(d):
             sys.exit('error: not a directory: %s' % d)
-    if sys.stdin.isatty():
-        sys.exit('error: pipe an snmpwalk -On output into stdin')
+    if args.input not in (None, '-') and not os.path.isfile(args.input):
+        sys.exit('error: no such file: %s' % args.input)
+    if stdin_wanted(args.input):
+        sys.exit('error: pipe an snmpwalk -On output into stdin, or give it with --input FILE')
     if args.archive and not archive_format(args.archive):
         sys.exit('error: --archive must end in .zip, .tar.gz, .tgz or .tar')
     if args.verify and not shutil.which('snmptranslate'):
         sys.exit('error: --verify needs snmptranslate (Net-SNMP) in PATH')
 
-    oids, symbolic = read_walk(sys.stdin)
+    oids, symbolic = read_walk(open_input(args.input))
     if symbolic:
         print('warning: %d lines have non-numeric OIDs and were ignored; '
               're-run snmpwalk with -On' % symbolic, file=sys.stderr)

@@ -44,6 +44,8 @@ Cisco 側で直ったかどうかも分かります。
 - `v2/` が import しているのに Cisco が配布していない標準 MIB。
   Net-SNMP と LibreNMS の `mibs/` ですべて揃います（下記）。
 
+Windows の場合は [Windows](#windows) を見てください。
+
 ## 使い方
 
 ```sh
@@ -135,12 +137,13 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify] [-q]
 ```
 
 | 引数 | 意味 |
 |---|---|
 | `MIB_DIR` | MIB のディレクトリ。通常は `out/mibs`。複数指定できます（Cisco が別に配布している MIB を足す場合など）。同じモジュールが複数にある場合は、先に指定した方を使います |
+| `-i`、`--input FILE` | walk を標準入力ではなく `FILE` から読みます。UTF-8、Latin-1、BOM 付きの UTF-16 を読めます |
 | `--prefix OID` | この OID 配下だけを対象にします。複数指定できます。既定は `1.3.6.1.4.1.9` と `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | `DIR`（サブディレクトリを含む）に既にあるモジュールを除きます。Net-SNMP 付属の標準 MIB などに使います。複数指定できます |
 | `--archive FILE` | ファイルを `FILE`（`.zip`、`.tar.gz`、`.tgz`、`.tar`）にもまとめます。中身はファイル名と同じ名前のフォルダに入ります |
@@ -148,7 +151,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--verify` | 列挙したファイルで足りるかを Net-SNMP で確認します（下記）。足りなければ終了コード 1 で終わります |
 | `-q`、`--quiet` | 進捗を表示しません（進捗は端末の時だけ出ます） |
 
-walk は標準入力から読みます。必要なファイルのパスを 1 行に 1 つ標準出力に出し、
+walk は標準入力か `--input FILE` から読みます。必要なファイルのパスを 1 行に 1 つ標準出力に出し、
 集計と、どの MIB にも定義が無い OID を標準エラーに出します。
 
 - **`-On` を付けてください。** 数値の OID だけを読みます。シンボル形式（`SNMPv2-SMI::enterprises.9...`）
@@ -207,16 +210,18 @@ python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --exclude-dir /usr/share/snmp/mibs
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --load-order
 python3 lookup_mib.py out/mibs < oids.txt
+python3 lookup_mib.py out/mibs --input oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ... | -i FILE] [--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]
 ```
 
 | 引数 | 意味 |
 |---|---|
 | `MIB_DIR` | MIB のディレクトリ。通常は `out/mibs`。先頭から続くディレクトリの引数が `MIB_DIR`、残りが検索語です |
 | `QUERY` | 数値の OID、名前（`ifDescr`）、モジュール付きの名前（`IF-MIB::ifDescr`）、またはそれにインスタンスを付けたもの（`ifDescr.1`）。`QUERY` が無い時は stdin から 1 行に 1 つ読みます（各行の最初の語なので、`snmpwalk -On` の出力もそのまま使えます） |
+| `-i`、`--input FILE` | 検索語を stdin ではなく `FILE` から、同じ形式で読みます。`QUERY` とは一緒に使えません |
 | `--detail` | 定義（`SYNTAX`、`MAX-ACCESS`、`DESCRIPTION` など）も表示します |
 | `--deps` | 結果の代わりに、名前を付けるのに必要なファイルを、import するモジュールも含めて表示します |
 | `--exclude-dir DIR` | `--deps` と一緒に使い、`DIR` かその下のディレクトリにすでにあるモジュールを除きます。Net-SNMP 付属の標準 MIB などです。複数指定できます |
@@ -236,8 +241,45 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--l
 ### キャッシュ
 
 `extract_mibs.py` と `lookup_mib.py` は、MIB ファイルから読んだ内容を `~/.cache/ent9-mibfix/`
-（または `$XDG_CACHE_HOME/ent9-mibfix/`）に保存します。次回からは、サイズか時刻が変わったファイルだけを
+（または `$XDG_CACHE_HOME/ent9-mibfix/`、Windows では `%LOCALAPPDATA%\ent9-mibfix\`）に保存します。次回からは、サイズか時刻が変わったファイルだけを
 読み直します。このフォルダはいつ消しても問題ありません。
+
+## Windows
+
+### WSL を使う（おすすめ）
+
+[WSL](https://learn.microsoft.com/ja-jp/windows/wsl/install) なら、`snmpbulkwalk` や `--verify` も含めて、
+この README のとおりに動きます。
+
+```sh
+# PowerShell で wsl --install を実行し、その後 Ubuntu で:
+sudo apt install python3 git snmp
+```
+
+WSL から `/mnt/c` の下のファイルを読むのは遅いので、clone や `out/` は WSL のホームディレクトリに置いてください。
+結果を Windows で使う時は、アーカイブを Windows のフォルダに書き出すか
+（例：`--archive /mnt/c/Users/YOU/Desktop/c3850.zip`）、エクスプローラーで `\\wsl$\Ubuntu\home\YOU` を開いてください。
+
+### WSL を使わない
+
+[Python for Windows](https://www.python.org/downloads/windows/) を入れれば、3 つのスクリプトは
+PowerShell やコマンドプロンプトでも動きます。違いは次のとおりです。
+
+- `python3` の代わりに `py` で実行します。リポジトリは
+  [Git for Windows](https://git-scm.com/download/win) で取得します（`git` のコマンドは同じです）。
+- PowerShell では `<` が使えません。walk は `--input FILE` で渡すか、パイプで渡してください。
+  Windows PowerShell 5.1 の `>` で保存したファイルは UTF-16 になりますが、そのまま読めます。
+- `--verify` は使えません。Net-SNMP の `snmptranslate` が必要ですが、Net-SNMP には最近の Windows 版の
+  公式ビルドがありません。walk も WSL か Linux のホストで取って、ファイルをコピーしてください。
+
+```powershell
+py fix_cisco_mibs.py cisco-mibs out net-snmp\mibs librenms\mibs
+py extract_mibs.py out\mibs --input walk.txt --load-order --archive c3850.zip
+py lookup_mib.py out\mibs ciscoEnvMonFanState --deps
+```
+
+Python 3.12 for Windows で、Windows PowerShell 5.1 と PowerShell 7 で確認しました。出力は Linux と同じで、
+`fix_cisco_mibs.py` が書き出すファイルもバイト単位で一致します。ただし、主にサポートする環境は WSL です。
 
 ## 検証結果
 

@@ -6,6 +6,7 @@
 Usage:
     python3 lookup_mib.py MIB_DIR [MIB_DIR ...] QUERY [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
     python3 lookup_mib.py MIB_DIR [MIB_DIR ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] < queries.txt
+    python3 lookup_mib.py MIB_DIR [MIB_DIR ...] --input queries.txt [...]
 
 MIB_DIR  a directory of MIBs, such as OUT_DIR/mibs written by fix_cisco_mibs.py.
          The leading arguments that are directories are MIB_DIRs; the rest are
@@ -14,7 +15,7 @@ QUERY    a numeric OID (1.3.6.1.4.1.9.9.13.1.3.1.3.1), a name (ifDescr), a
          module-qualified name (IF-MIB::ifDescr), or a name with an instance
          (ifDescr.1, SNMPv2-SMI::enterprises.9.9.13)
 
-With no QUERY, reads one per line from stdin (the first word of each line, so
+With no QUERY, reads one per line from stdin or --input FILE (the first word of each line, so
 snmpwalk -On output works too). Prints one line per match:
 
     OID <tab> MODULE::name[.rest] <tab> kind <tab> file
@@ -116,14 +117,17 @@ def read_queries(stream):
 
 def main():
     ap = argparse.ArgumentParser(
-        usage='%(prog)s MIB_DIR [MIB_DIR ...] [QUERY ...] '
+        usage='%(prog)s MIB_DIR [MIB_DIR ...] [QUERY ... | -i FILE] '
               '[--deps [--exclude-dir DIR] [--load-order] | --detail] [-q]',
         description='Tell which MIB module and file define an OID or a name. '
-                    'With no QUERY, reads one per line from stdin.')
+                    'With no QUERY, reads one per line from stdin or --input.')
     ap.add_argument('args', nargs='+', metavar='MIB_DIR|QUERY',
                     help='directories of MIBs (the leading arguments that are '
                          'directories), then OIDs or names such as '
                          '1.3.6.1.2.1.2.2.1.2, ifDescr, IF-MIB::ifDescr.1')
+    ap.add_argument('-i', '--input', metavar='FILE',
+                    help='read queries from FILE instead of stdin, one per line '
+                         '(UTF-8, Latin-1 or UTF-16 with a BOM)')
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--deps', action='store_true',
                       help='instead of the matches, print the files needed to name '
@@ -154,10 +158,14 @@ def main():
     for d in args.exclude_dir:
         if not os.path.isdir(d):
             sys.exit('error: not a directory: %s' % d)
+    if queries and args.input:
+        sys.exit('error: give QUERY arguments or --input, not both')
+    if args.input not in (None, '-') and not os.path.isfile(args.input):
+        sys.exit('error: no such file: %s' % args.input)
     if not queries:
-        if sys.stdin.isatty():
-            sys.exit('error: give a QUERY or pipe queries into stdin')
-        queries = list(read_queries(sys.stdin))
+        if extract_mibs.stdin_wanted(args.input):
+            sys.exit('error: give a QUERY, pipe queries into stdin, or use --input FILE')
+        queries = list(read_queries(extract_mibs.open_input(args.input)))
 
     progress = extract_mibs.Progress(quiet=args.quiet)
     mods = extract_mibs.load_modules(mibdirs, progress)

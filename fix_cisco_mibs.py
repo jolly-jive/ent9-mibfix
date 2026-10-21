@@ -100,7 +100,7 @@ def read(p):
 
 
 def write(p, text):
-    with open(p, 'w', encoding='latin-1') as fh:
+    with open(p, 'w', encoding='latin-1', newline='\n') as fh:
         fh.write(text)
 
 
@@ -535,7 +535,7 @@ def write_changes_md(path, ja=False):
         for c in sorted(items, key=lambda c: c['module']):
             lines.append(f"- **{c['module']}**: {c['detail_ja' if ja else 'detail']}")
         lines.append('')
-    with open(path, 'w', encoding='utf-8') as fh:
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\n'.join(lines))
 
 
@@ -576,7 +576,7 @@ def main():
     PROGRESS.step('checking for unresolved dependencies')
     report_unresolved_dependencies(mibdir)
     PROGRESS.step('writing change logs')
-    with open(os.path.join(outdir, 'changes.json'), 'w', encoding='utf-8') as fh:
+    with open(os.path.join(outdir, 'changes.json'), 'w', encoding='utf-8', newline='\n') as fh:
         json.dump(CHANGES, fh, indent=1, ensure_ascii=False)
     write_changes_md(os.path.join(outdir, 'CHANGES.md'))
     write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), ja=True)
