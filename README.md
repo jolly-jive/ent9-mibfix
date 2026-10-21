@@ -339,3 +339,19 @@ See also [NOTICE](NOTICE).
 The MIBs that the script reads and writes are Cisco's (and, for the standard MIBs,
 their respective authors') and are not covered by this license. This repository does
 not contain or redistribute them.
+
+## A note to Cisco (and everyone else)
+
+ent9-mibfix exists because many MIBs in cisco/cisco-mibs do not load cleanly as
+published. I understand why they are hard to change: there are systems out there that
+depend on them as they are, and changing a published MIB always has a cost. So this
+project fixes them on the user's side instead. If it ever becomes unnecessary, I'll be
+glad.
+
+To everyone else using ent9-mibfix: if it saves you some trouble, buy me an ice cream. 🍦
+
+As for Cisco, you probably get the most out of it, so yours is an It's-It, San
+Francisco's own ice cream sandwich since 1928.
+
+*This is a request, not a license term. The scripts are under Apache-2.0, with no extra
+conditions.*
