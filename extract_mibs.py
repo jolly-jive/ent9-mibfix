@@ -12,13 +12,14 @@ MIB_DIR  a directory of MIBs that loads cleanly, such as OUT_DIR/mibs written
          the same module, the first one wins
 
 Reads the walk from stdin. It must be numeric (snmpwalk -On). Prints the path
-of every MIB file needed, including the modules they import, one per line.
-Unresolved OIDs and a summary go to stderr.
+of every MIB file needed, including the modules they import, one per line,
+sorted by name (--load-order: each after the modules it imports). Unresolved OIDs and a summary go to stderr.
 
 --verify loads only the listed files into Net-SNMP (snmptranslate) and checks
 that every OID gets the same name as with all of MIB_DIR loaded.
 """
 import argparse
+import heapq
 import os
 import pickle
 import re
@@ -282,6 +283,86 @@ def dependencies(mods, roots, exclude):
     return needed, skipped, missing
 
 
+def load_order(mods, needed):
+    """Sort needed so that every module comes after the modules it imports.
+
+    Ties are broken by name. Modules that import each other (a cycle) can't be
+    ordered; they are kept together, sorted by name. Returns (order, cycles),
+    cycles being a list of sorted module lists.
+    """
+    deps = {m: {d for d in mods[m]['imports'].values() if d in needed} for m in needed}
+
+    # strongly connected components (Tarjan, iterative)
+    comp, index, low, stack, on_stack, groups = {}, {}, {}, [], set(), []
+    for start in sorted(needed):
+        if start in index:
+            continue
+        work = [(start, iter(sorted(deps[start])))]
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            v, it = work[-1]
+            w = next(it, None)
+            if w is None:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[v])
+                if low[v] == index[v]:
+                    group = []
+                    while True:
+                        w = stack.pop()
+                        on_stack.discard(w)
+                        comp[w] = len(groups)
+                        group.append(w)
+                        if w == v:
+                            break
+                    groups.append(sorted(group))
+            elif w not in index:
+                index[w] = low[w] = len(index)
+                stack.append(w)
+                on_stack.add(w)
+                work.append((w, iter(sorted(deps[w]))))
+            elif w in on_stack:
+                low[v] = min(low[v], index[w])
+
+    # Kahn's algorithm on the components, smallest name first
+    waiting = [set() for _ in groups]  # components each one still needs
+    users = [set() for _ in groups]
+    for m in needed:
+        for d in deps[m]:
+            if comp[d] != comp[m]:
+                waiting[comp[m]].add(comp[d])
+                users[comp[d]].add(comp[m])
+    ready = [(g[0], i) for i, g in enumerate(groups) if not waiting[i]]
+    heapq.heapify(ready)
+    order = []
+    while ready:
+        _, i = heapq.heappop(ready)
+        order.extend(groups[i])
+        for u in users[i]:
+            waiting[u].discard(i)
+            if not waiting[u]:
+                heapq.heappush(ready, (groups[u][0], u))
+    return order, [g for g in groups if len(g) > 1]
+
+
+def print_files(mods, needed, ordered):
+    """Print the files of needed, by name or in load order. Returns the list."""
+    if ordered:
+        order, cycles = load_order(mods, needed)
+    else:
+        order, cycles = sorted(needed, key=lambda m: mods[m]['path']), []
+    files = [mods[m]['path'] for m in order]
+    for p in files:
+        print(p)
+    sys.stdout.flush()
+    for group in cycles:
+        print('warning: these modules import each other, so no order works for '
+              'every tool: %s' % ', '.join(group), file=sys.stderr)
+    return files
+
+
 # --------------------------------------------------------------------------
 # verify with Net-SNMP
 # --------------------------------------------------------------------------
@@ -427,6 +508,9 @@ def main():
                          'subdirectories, e.g. /usr/share/snmp/mibs; may be repeated')
     ap.add_argument('--archive', metavar='FILE',
                     help='also pack the files into FILE (.zip, .tar.gz, .tgz or .tar)')
+    ap.add_argument('--load-order', action='store_true',
+                    help='list the files so that each comes after the ones it imports, '
+                         'for tools that load MIBs one at a time (default: by name)')
     ap.add_argument('--verify', action='store_true',
                     help='check with snmptranslate that the listed files name every OID '
                          'as all of MIB_DIR does; exit 1 if not')
@@ -467,10 +551,7 @@ def main():
     progress.clear()
 
     needed, skipped, missing = dependencies(mods, direct, exclude)
-    files = sorted(mods[m]['path'] for m in needed)
-    for p in files:
-        print(p)
-    sys.stdout.flush()
+    files = print_files(mods, needed, args.load_order)
     if args.archive:
         write_archive(args.archive, files)
 

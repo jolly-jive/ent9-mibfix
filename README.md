@@ -131,11 +131,12 @@ snmpbulkwalk -On -v2c -c public HOST 1.3.6.1.4.1 > walk.txt
 
 python3 extract_mibs.py out/mibs < walk.txt
 python3 extract_mibs.py out/mibs --exclude-dir /usr/share/snmp/mibs --archive c3850.zip < walk.txt
+python3 extract_mibs.py out/mibs --load-order < walk.txt
 python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--verify]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify]
 ```
 
 | Argument | Meaning |
@@ -144,6 +145,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--prefix OID` | Only look at OIDs under this prefix. May be repeated. Default: `1.3.6.1.4.1.9` and `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | Leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
 | `--archive FILE` | Also pack the files into `FILE` (`.zip`, `.tar.gz`, `.tgz` or `.tar`), in a folder named after the file |
+| `--load-order` | List the files so that each one comes after the modules it imports, instead of by name. For managers and MIB browsers that load MIBs one at a time. `--archive` stores them in the same order |
 | `--verify` | Check with Net-SNMP that the listed files are enough (see below). Exits with status 1 if they are not |
 
 The walk is read from stdin. The paths of the needed files go to stdout, one per
@@ -160,6 +162,12 @@ line. A summary, and the OIDs that no MIB defines, go to stderr.
   devices (`1.3.6.1.4.1.9.6.1.101`, CISCOSB-* MIBs) are not covered by cisco-mibs; add
   their MIBs as another `MIB_DIR`.
 - Traps do not appear in a walk. MIBs needed only to decode traps are not found.
+- **With `--load-order`, modules that import each other** can't be put in an order
+  that suits every tool. They are listed next to each other, sorted by name, with a
+  warning on stderr. In the current cisco-mibs this happens only with
+  `CISCO-LWAPP-AP-MIB` and `CISCO-LWAPP-DOT11-MIB`. Their order by name, AP first, is
+  also the one that works: DOT11 uses objects from AP in its table indexes, while AP
+  uses one object from DOT11 only in a notification.
 
 ### Checking the result (`--verify`)
 
@@ -203,11 +211,12 @@ python3 lookup_mib.py out/mibs ifDescr IF-MIB::ifDescr.1 SNMPv2-SMI::enterprises
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --detail
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --exclude-dir /usr/share/snmp/mibs
+python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --load-order
 python3 lookup_mib.py out/mibs < oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] | --detail]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
 ```
 
 | Argument | Meaning |
@@ -217,6 +226,7 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] | --
 | `--detail` | Also print each definition (`SYNTAX`, `MAX-ACCESS`, `DESCRIPTION` and so on) |
 | `--deps` | Instead of the matches, print the files needed to name them, including the modules they import |
 | `--exclude-dir DIR` | With `--deps`, leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
+| `--load-order` | With `--deps`, list the files so that each one comes after the modules it imports, instead of by name |
 
 Each match is one tab-separated line:
 

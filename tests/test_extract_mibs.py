@@ -98,5 +98,43 @@ class VerifyTest(unittest.TestCase):
         self.assertEqual(sum(gaps.values()), 1)
 
 
+def fake_mods(imports):
+    """{module: [imported modules]} -> the shape load_modules returns."""
+    return {m: {'imports': {'%s-%d' % (d, i): d for i, d in enumerate(deps)}, 'path': m}
+            for m, deps in imports.items()}
+
+
+class LoadOrderTest(unittest.TestCase):
+    def test_imports_first_ties_by_name(self):
+        mods = fake_mods({'SMI': [], 'TC': ['SMI'], 'B-MIB': ['TC', 'SMI'],
+                          'A-MIB': ['SMI', 'B-MIB'], 'C-MIB': ['SMI']})
+        self.assertEqual(extract_mibs.load_order(mods, set(mods)),
+                         (['SMI', 'C-MIB', 'TC', 'B-MIB', 'A-MIB'], []))
+
+    def test_only_needed_modules(self):
+        mods = fake_mods({'SMI': [], 'TC': ['SMI'], 'A-MIB': ['TC', 'SMI']})
+        self.assertEqual(extract_mibs.load_order(mods, {'A-MIB', 'TC'}),
+                         (['TC', 'A-MIB'], []))
+
+    def test_cycle_kept_together(self):
+        mods = fake_mods({'SMI': [], 'Y': ['SMI', 'X'], 'X': ['SMI', 'Y'],
+                          'A': ['SMI'], 'Z': ['X']})
+        self.assertEqual(extract_mibs.load_order(mods, set(mods)),
+                         (['SMI', 'A', 'X', 'Y', 'Z'], [['X', 'Y']]))
+
+    @unittest.skipUnless(os.path.isdir(MIBDIR), 'needs out/mibs')
+    def test_all_mibs(self):
+        mods = extract_mibs.load_modules([MIBDIR])
+        order, cycles = extract_mibs.load_order(mods, set(mods))
+        self.assertEqual(sorted(order), sorted(mods))
+        self.assertEqual(cycles, [['CISCO-LWAPP-AP-MIB', 'CISCO-LWAPP-DOT11-MIB']])
+        in_cycle = {m for g in cycles for m in g}
+        pos = {m: i for i, m in enumerate(order)}
+        for m in order:
+            for d in set(mods[m]['imports'].values()):
+                if d in pos and not (m in in_cycle and d in in_cycle):
+                    self.assertLess(pos[d], pos[m], '%s imports %s' % (m, d))
+
+
 if __name__ == '__main__':
     unittest.main()

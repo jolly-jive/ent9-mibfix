@@ -4,8 +4,8 @@
 """Tell which MIB module and file define an OID or a name.
 
 Usage:
-    python3 lookup_mib.py MIB_DIR [MIB_DIR ...] QUERY [QUERY ...] [--deps [--exclude-dir DIR] | --detail]
-    python3 lookup_mib.py MIB_DIR [MIB_DIR ...] [--deps [--exclude-dir DIR] | --detail] < queries.txt
+    python3 lookup_mib.py MIB_DIR [MIB_DIR ...] QUERY [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
+    python3 lookup_mib.py MIB_DIR [MIB_DIR ...] [--deps [--exclude-dir DIR] [--load-order] | --detail] < queries.txt
 
 MIB_DIR  a directory of MIBs, such as OUT_DIR/mibs written by fix_cisco_mibs.py.
          The leading arguments that are directories are MIB_DIRs; the rest are
@@ -117,7 +117,7 @@ def read_queries(stream):
 def main():
     ap = argparse.ArgumentParser(
         usage='%(prog)s MIB_DIR [MIB_DIR ...] [QUERY ...] '
-              '[--deps [--exclude-dir DIR] | --detail]',
+              '[--deps [--exclude-dir DIR] [--load-order] | --detail]',
         description='Tell which MIB module and file define an OID or a name. '
                     'With no QUERY, reads one per line from stdin.')
     ap.add_argument('args', nargs='+', metavar='MIB_DIR|QUERY',
@@ -134,6 +134,9 @@ def main():
     ap.add_argument('--exclude-dir', action='append', default=[], metavar='DIR',
                     help='with --deps, leave out modules that already exist in DIR or '
                          'its subdirectories, e.g. /usr/share/snmp/mibs; may be repeated')
+    ap.add_argument('--load-order', action='store_true',
+                    help='with --deps, list the files so that each comes after the ones '
+                         'it imports (default: by name)')
     args = ap.parse_args()
 
     n = 0
@@ -144,6 +147,8 @@ def main():
         sys.exit('error: the first argument must be a MIB directory: %s' % args.args[0])
     if args.exclude_dir and not args.deps:
         sys.exit('error: --exclude-dir needs --deps')
+    if args.load_order and not args.deps:
+        sys.exit('error: --load-order needs --deps')
     for d in args.exclude_dir:
         if not os.path.isdir(d):
             sys.exit('error: not a directory: %s' % d)
@@ -181,9 +186,7 @@ def main():
 
     if args.deps:
         needed, skipped, missing = extract_mibs.dependencies(mods, roots, exclude)
-        for p in sorted(mods[m]['path'] for m in needed):
-            print(p)
-        sys.stdout.flush()
+        extract_mibs.print_files(mods, needed, args.load_order)
         if skipped:
             print('left out (already in --exclude-dir): %s' % ', '.join(sorted(skipped)),
                   file=sys.stderr)

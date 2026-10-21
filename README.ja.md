@@ -124,11 +124,12 @@ snmpbulkwalk -On -v2c -c public HOST 1.3.6.1.4.1 > walk.txt
 
 python3 extract_mibs.py out/mibs < walk.txt
 python3 extract_mibs.py out/mibs --exclude-dir /usr/share/snmp/mibs --archive c3850.zip < walk.txt
+python3 extract_mibs.py out/mibs --load-order < walk.txt
 python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--verify]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--verify]
 ```
 
 | 引数 | 意味 |
@@ -137,6 +138,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [--prefix OID] [--exclude-dir DIR] [--arch
 | `--prefix OID` | この OID 配下だけを対象にします。複数指定できます。既定は `1.3.6.1.4.1.9` と `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | `DIR`（サブディレクトリを含む）に既にあるモジュールを除きます。Net-SNMP 付属の標準 MIB などに使います。複数指定できます |
 | `--archive FILE` | ファイルを `FILE`（`.zip`、`.tar.gz`、`.tgz`、`.tar`）にもまとめます。中身はファイル名と同じ名前のフォルダに入ります |
+| `--load-order` | 名前順ではなく、各ファイルを、それが import するモジュールの後になる順で列挙します。MIB を 1 つずつ読み込むマネージャや MIB ブラウザ向けです。`--archive` にも同じ順で格納します |
 | `--verify` | 列挙したファイルで足りるかを Net-SNMP で確認します（下記）。足りなければ終了コード 1 で終わります |
 
 walk は標準入力から読みます。必要なファイルのパスを 1 行に 1 つ標準出力に出し、
@@ -151,6 +153,11 @@ walk は標準入力から読みます。必要なファイルのパスを 1 行
   あるので、多少出るのは正常です。Cisco Small Business の機器（`1.3.6.1.4.1.9.6.1.101`、CISCOSB-* MIB）は
   cisco-mibs に含まれていません。その MIB を別の `MIB_DIR` として追加してください。
 - トラップは walk に現れません。トラップの解読にだけ必要な MIB は見つかりません。
+- **`--load-order` を付けても、互いに import し合うモジュール**は、どのツールでも通る順には並べられません。
+  名前順で隣り合わせに並べ、標準エラーに警告を出します。現在の cisco-mibs では `CISCO-LWAPP-AP-MIB` と
+  `CISCO-LWAPP-DOT11-MIB` の組だけが該当します。名前順で AP が先になり、これで正しく読めます。
+  DOT11 は AP のオブジェクトをテーブルのインデックスに使っていますが、AP は DOT11 のオブジェクトを 1 つ、
+  通知の中で使っているだけだからです。
 
 ### 結果の確認（`--verify`）
 
@@ -191,11 +198,12 @@ python3 lookup_mib.py out/mibs ifDescr IF-MIB::ifDescr.1 SNMPv2-SMI::enterprises
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --detail
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps
 python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --exclude-dir /usr/share/snmp/mibs
+python3 lookup_mib.py out/mibs ciscoEnvMonFanState --deps --load-order
 python3 lookup_mib.py out/mibs < oids.txt
 ```
 
 ```
-lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] | --detail]
+lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] [--load-order] | --detail]
 ```
 
 | 引数 | 意味 |
@@ -205,6 +213,7 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ...] [--deps [--exclude-dir DIR] | --
 | `--detail` | 定義（`SYNTAX`、`MAX-ACCESS`、`DESCRIPTION` など）も表示します |
 | `--deps` | 結果の代わりに、名前を付けるのに必要なファイルを、import するモジュールも含めて表示します |
 | `--exclude-dir DIR` | `--deps` と一緒に使い、`DIR` かその下のディレクトリにすでにあるモジュールを除きます。Net-SNMP 付属の標準 MIB などです。複数指定できます |
+| `--load-order` | `--deps` と一緒に使い、名前順ではなく、各ファイルを、それが import するモジュールの後になる順で表示します |
 
 結果は 1 件ごとにタブ区切りの 1 行です。
 
