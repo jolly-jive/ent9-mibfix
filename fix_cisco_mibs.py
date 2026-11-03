@@ -192,7 +192,7 @@ def present_modules(outdir):
 
 def imported_modules(path):
     """The modules a MIB file imports from."""
-    return set(smiscan.parse_imports(smiscan.clean(smiscan.read(path)))[0].values())
+    return set(smiscan.parse_imports(smiscan.clean(smiscan.read(path))).values())
 
 
 def import_table(outdir, mods, what=''):
@@ -248,17 +248,20 @@ def report_unresolved_dependencies(outdir):
 # --------------------------------------------------------------------------
 
 def patch(outdir, mod, old, new, desc, count=1, regex=False):
-    """desc is a message text (see Msg), so literal braces must be doubled."""
+    """Replace old with new in mod, at most count times (0: all), and log desc.
+
+    desc is a message text (see Msg), so literal braces must be doubled.
+    """
     p = os.path.join(outdir, mod + '.my')
     if not os.path.exists(p):
         log(mod, 'patch-skipped', 'Module not found: {desc}', desc=Msg(desc))
         return
     text = smiscan.read(p)
     if regex:
-        new_text, n = re.subn(old, new, text, count=0 if count == 0 else count)
+        new_text, n = re.subn(old, new, text, count=count)
     else:
         n = text.count(old) if count == 0 else min(text.count(old), count)
-        new_text = text.replace(old, new, n if count else -1)
+        new_text = text.replace(old, new, n)
     if n == 0:
         log(mod, 'patch-not-applied', 'Target text not found (maybe fixed upstream): {desc}', desc=Msg(desc))
         return

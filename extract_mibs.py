@@ -93,7 +93,7 @@ def scan_file(p):
     mod = smiscan.module_name(tc)
     if not mod:
         return None
-    imports, _ = smiscan.parse_imports(tc)
+    imports = smiscan.parse_imports(tc)
     defs = {name: (macro, comps) for name, macro, comps in smiscan.oid_assignments(tc)}
     notifs = dict(smiscan.notification_objects(tc))
     return mod, imports, defs, notifs

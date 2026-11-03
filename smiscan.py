@@ -86,10 +86,10 @@ def module_name(text_clean):
 
 
 def parse_imports(text_clean):
-    """Return dict symbol -> module, plus (start, end) span of the IMPORTS body."""
+    """Return {symbol: module it is imported from}."""
     m = re.search(r'\bIMPORTS\b(.*?);', text_clean, re.S)
     if not m:
-        return {}, None
+        return {}
     body = m.group(1)
     imports = {}
     pending = []
@@ -106,7 +106,7 @@ def parse_imports(text_clean):
             pending = []
             continue
         pending.append(tok)
-    return imports, m.span(1)
+    return imports
 
 
 OID_HEAD_RE = re.compile(
@@ -216,11 +216,9 @@ def references(text_clean):
 def scan(text):
     tc = clean(text)
     mod = module_name(tc)
-    imports, span = parse_imports(tc)
     return {
         'module': mod,
-        'imports': imports,
+        'imports': parse_imports(tc),
         'defs': local_defs(tc),
         'refs': references(tc),
-        'has_imports': span is not None,
     }

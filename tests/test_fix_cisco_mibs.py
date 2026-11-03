@@ -18,7 +18,7 @@ import smiscan  # noqa: E402
 
 
 def imports_of(text):
-    return smiscan.parse_imports(smiscan.clean(text))[0]
+    return smiscan.parse_imports(smiscan.clean(text))
 
 
 def module(name, body='', lu=None):
