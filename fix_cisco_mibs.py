@@ -155,20 +155,34 @@ def select_modules(v2dir, outdir):
 
 
 # --------------------------------------------------------------------------
-# 2. bring in modules that are imported but not shipped in v2/, and the
-#    OLD-CISCO-* modules (only in v1/, but current IOS still answers them)
+# 2. bring in modules that are imported but not shipped in v2/, and the old
+#    modules that are only in v1/ but still matter to current IOS: the
+#    OLD-CISCO-* objects it still answers, and the traps it still sends
 # --------------------------------------------------------------------------
 
-def add_old_cisco_modules(v1dir, outdir):
+# v1-only modules other than OLD-CISCO-*, with the reason to add each
+OLD_TRAP_MODULES = {
+    'CISCOTRAP-MIB': 'Not in v2/, but IOS and IOS-XE still send its traps '
+                     '(reload, and tcpConnectionClose for "snmp-server enable traps tty"). '
+                     'Added from v1/{file}',
+}
+
+
+def add_old_modules(v1dir, outdir):
     present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
     for mod, cands in sorted(collect(v1dir).items()):
-        if not mod.startswith('OLD-CISCO-') or mod in present:
+        if mod in present:
+            continue
+        if mod.startswith('OLD-CISCO-'):
+            why = 'Not in v2/, but devices still answer its OIDs (enterprises.9.2 etc.). Added from v1/{file}'
+        elif mod in OLD_TRAP_MODULES:
+            why = OLD_TRAP_MODULES[mod]
+        else:
             continue
         cands.sort(reverse=True)
         lu, f, p = cands[0]
         shutil.copyfile(p, os.path.join(outdir, mod + '.my'))
-        log(mod, 'added-old',
-            'Not in v2/, but devices still answer its OIDs (enterprises.9.2 etc.). Added from v1/{file}', file=f)
+        log(mod, 'added-old', why, file=f)
 
 
 def add_missing_dependencies(outdir, search_dirs):
@@ -277,6 +291,27 @@ def specific_patches(outdir):
           r'\n-- \1  (dangling duplicate header, commented out by fix script)\n',
           'A lone "cLMultiBSSIDProfileRowStatus OBJECT-TYPE" header with no body was left over '
           '(the object is already defined earlier as {{ cLMultiBSSIDProfileEntry 9 }}). Commented out', regex=True)
+    # CISCOTRAP-MIB also restates the SNMPv1 generic traps under
+    # "ENTERPRISE snmp", but never imports snmp. Net-SNMP then hangs them on
+    # whatever node it finds named snmp (another vendor's), and the plain
+    # names coldStart, linkDown etc. resolve there instead of SNMPv2-MIB/IF-MIB.
+    p = os.path.join(outdir, 'CISCOTRAP-MIB.my')
+    if os.path.exists(p):
+        text = read(p)
+        pat = re.compile(r'^[ \t]*\w+\s+TRAP-TYPE\s+ENTERPRISE\s+snmp\b.*?::=[^\n]*$', re.M | re.S)
+        names = [m.group().split()[0] for m in pat.finditer(text)]
+        if names:
+            text = pat.sub(lambda m: re.sub(r'^', '-- ', m.group(), flags=re.M), text)
+            write(p, text)
+            log('CISCOTRAP-MIB', 'patched',
+                'The SNMPv1 generic traps {names} use "ENTERPRISE snmp", but snmp is not imported, '
+                'so Net-SNMP put them under an unrelated node named snmp and their plain names '
+                'resolved there. They repeat the standard traps (SNMPv2-MIB, IF-MIB). '
+                'Commented them out (judgment call)', names=', '.join(names))
+        else:
+            log('CISCOTRAP-MIB', 'patch-not-applied',
+                'Target text not found (maybe fixed upstream): {desc}',
+                desc=Msg('Generic traps under "ENTERPRISE snmp" in CISCOTRAP-MIB'))
     # AGENT-CAPABILITIES whose OID clauses were left after every VARIATION
     p = os.path.join(outdir, 'CISCO-ATM-PVCTRAP-EXTN-CAPABILITY.my')
     if os.path.exists(p):
@@ -515,7 +550,7 @@ KIND_TITLES = [
     ('duplicate-module', 'Duplicate module definitions (one kept)'),
     ('renamed', 'Renamed files'),
     ('added-dependency', 'Dependencies added from outside v2/'),
-    ('added-old', 'OLD-CISCO-* modules added from v1/'),
+    ('added-old', 'Old modules added from v1/'),
     ('patched', 'Fixes to MIB text'),
     ('import-added', 'Added IMPORTS'),
     ('patch-skipped', 'Skipped fixes'),
@@ -563,8 +598,8 @@ def main():
     PROGRESS = Steps(8, quiet=args.quiet)
     PROGRESS.step('selecting modules from v2/')
     select_modules(os.path.join(repo, 'v2'), mibdir)
-    PROGRESS.step('adding OLD-CISCO-* modules from v1/')
-    add_old_cisco_modules(os.path.join(repo, 'v1'), mibdir)
+    PROGRESS.step('adding old modules from v1/')
+    add_old_modules(os.path.join(repo, 'v1'), mibdir)
     PROGRESS.step('adding missing dependencies')
     add_missing_dependencies(mibdir, [os.path.join(repo, 'v1')] + extra)
     PROGRESS.step('applying specific patches')

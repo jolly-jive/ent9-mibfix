@@ -24,17 +24,21 @@ The numbers are for upstream commit `c9ab98c` (2026-09-29).
    `RMON2-MIB` breaks, and so do the 126 modules that import it. The script takes
    them from `v1/`, and takes standard MIBs that Cisco does not ship from
    directories you specify.
-2. **OLD-CISCO-\* modules that exist only in `v1/`** (15 modules added)
-   These define `enterprises.9.2` (`local`), such as `OLD-CISCO-INTERFACES-MIB`
-   and `OLD-CISCO-CPU-MIB`. Current IOS and IOS-XE still answer them: a Catalyst
-   3850 returned about 16,000 OIDs there. They are copied from `v1/` as they are.
+2. **Old modules that exist only in `v1/`** (16 modules added)
+   The 15 OLD-CISCO-\* modules define `enterprises.9.2` (`local`), such as
+   `OLD-CISCO-INTERFACES-MIB` and `OLD-CISCO-CPU-MIB`. Current IOS and IOS-XE still
+   answer them: a Catalyst 3850 returned about 16,000 OIDs there. They are copied
+   from `v1/` as they are. `CISCOTRAP-MIB` (file `CISCO-GENERAL-TRAPS.my`) defines
+   the traps `reload` and `tcpConnectionClose` (sent by `snmp-server enable traps tty`),
+   which IOS and IOS-XE still send. Its restated SNMPv1 generic traps (`coldStart`,
+   `linkDown` and so on) are commented out, because they hid the standard ones.
 3. **File names that do not match module names, and duplicate modules**
    (15 files renamed, 13 duplicates resolved)
    Every module is written as `<module name>.my`. When several files define the same
    module, the one with the newest `LAST-UPDATED` is kept.
 4. **Missing imports** (37 imports added to 27 modules)
    For example, modules that use `TruthValue` or `Counter32` without importing them.
-5. **Errors in the MIB text** (35 fixes)
+5. **Errors in the MIB text** (36 fixes)
    Unclosed strings, `END` written twice, trailing commas, misspelled type names,
    duplicate names, and so on.
 
@@ -209,17 +213,17 @@ extraction, so it adds little time. On a terminal, progress is shown on one line
 ### Example results
 
 Walks of two real switches, with upstream commit `c9ab98c`. The percentages are of the
-1,669 files in `out/mibs/`. (cisco-mibs itself has 2,796 files, 1,142 in `v1/` and
+1,670 files in `out/mibs/`. (cisco-mibs itself has 2,796 files, 1,142 in `v1/` and
 1,654 in `v2/`, but most of `v1/` are SMIv1 copies of `v2/`, so `out/mibs/` is the fair
 base.)
 
 | Device | OIDs in the walk | Files listed | With `--exclude-dir /usr/share/snmp/mibs` |
 |---|---|---|---|
-| Catalyst 3850 (IOS-XE 03.07.04E) | 62,838 | **146** (8.7%) | **121** (7.2%) |
-| Catalyst 2960-X (IOS 15.2(6)E) | 29,088 | **94** (5.6%) | **69** (4.1%) |
+| Catalyst 3850 (IOS-XE 03.07.04E) | 62,838 | **148** (8.9%) | **123** (7.4%) |
+| Catalyst 2960-X (IOS 15.2(6)E) | 29,088 | **97** (5.8%) | **72** (4.3%) |
 
 `/usr/share/snmp/mibs` is the Net-SNMP 5.9.4 package of Ubuntu 24.04. `--verify`
-passes for both. Of the 57 files that the 3850 needs and the 2960-X does not, 22 are
+passes for both. Of the 56 files that the 3850 needs and the 2960-X does not, 22 are
 for its built-in wireless controller (AIRESPACE-\*, CISCO-LWAPP-\*).
 
 ## Finding which MIB defines an OID
@@ -326,7 +330,7 @@ built from GitHub) and pysmi 1.6.3.
 | Label → OID mappings of the original (`snmptranslate -Tz`) | 151,741 labels | **0** lost or changed, 1,356 newly resolved |
 
 The last row checks that the fixes do not change the meaning of any existing OID.
-The OLD-CISCO-\* modules (item 2 above) were added after these tests. They were
+The old modules (item 2 above) were added after these tests. They were
 checked only with Net-SNMP 5.9.4: each loads on its own without errors, and the
 `-m ALL` output is unchanged.
 Running the script twice on the same input gives identical output.
