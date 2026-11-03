@@ -287,20 +287,25 @@ class FixImportsTest(TempDirTest):
                                          'Integer32 ::= INTEGER (-2147483648..2147483647)\n'))
         self.put('X-TC-MIB.my', module('X-TC-MIB', 'FooType ::= INTEGER\n'))
         self.put('Y-MIB.my', module('Y-MIB', 'FooType ::= INTEGER\n'))
+        self.put('P-MIB.my', module('P-MIB', 'BarType ::= INTEGER\n'))
+        self.put('Q-MIB.my', module('Q-MIB', 'BarType ::= INTEGER\n'))
         self.put('A-MIB.my', module('A-MIB',
                                     'IMPORTS OBJECT-TYPE FROM SNMPv2-SMI;\n'
                                     'aRoot OBJECT IDENTIFIER ::= { enterprises 99999 }\n'
                                     'aValue OBJECT-TYPE\n    SYNTAX Integer32\n    ::= { aRoot 1 }\n'
                                     'aFoo OBJECT-TYPE\n    SYNTAX FooType\n    ::= { aRoot 2 }\n'
-                                    'aOther OBJECT-TYPE\n    SYNTAX NoSuchType\n    ::= { aRoot 3 }\n'))
+                                    'aOther OBJECT-TYPE\n    SYNTAX NoSuchType\n    ::= { aRoot 3 }\n'
+                                    'aBar OBJECT-TYPE\n    SYNTAX BarType\n    ::= { aRoot 4 }\n'))
         fix.fix_imports(self.dir)
         self.assertEqual(imports_of(self.get('A-MIB.my')), {
             'OBJECT-TYPE': 'SNMPv2-SMI', 'Integer32': 'SNMPv2-SMI', 'enterprises': 'SNMPv2-SMI',
             'FooType': 'X-TC-MIB'})
-        self.assertEqual(self.kinds(), [('A-MIB', 'import-added')] * 3 + [('A-MIB', 'import-unresolved')])
+        self.assertEqual(self.kinds(), [('A-MIB', 'import-added')] * 3 + [('A-MIB', 'import-unresolved')] * 2)
         details = [c['detail'] for c in fix.CHANGES]
         self.assertIn('FooType is used but was not imported. Added "FROM X-TC-MIB" '
                       '(also defined in: Y-MIB)', details)
+        self.assertIn('BarType is used but not imported, and no single module to import it from '
+                      'was found. Candidates: P-MIB, Q-MIB', details)
         self.assertIn('NoSuchType is used but not imported, and no single module to import it from '
                       'was found. Candidates: none', details)
 

@@ -537,7 +537,7 @@ def fix_imports(outdir):
             else:
                 log(name, 'import-unresolved',
                     '{sym} is used but not imported, and no single module to import it from was found. '
-                    'Candidates: {cands}', sym=sym, cands=str(cands) if cands else Msg('none'))
+                    'Candidates: {cands}', sym=sym, cands=', '.join(cands) if cands else Msg('none'))
         write(p, text)
 
 
