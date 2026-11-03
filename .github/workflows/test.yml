@@ -1,0 +1,33 @@
+# Runs the tests that need nothing outside the repository. The ones that need
+# out/mibs, samples/ or snmptranslate skip themselves here; run them locally.
+name: test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # the oldest version the README promises, and a current one
+        python: ['3.8', '3.14']
+    container: python:${{ matrix.python }}-slim
+    steps:
+      - uses: actions/checkout@v5
+      - run: python -m unittest discover -v tests
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -v tests
