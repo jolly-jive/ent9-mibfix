@@ -341,26 +341,8 @@ def specific_patches(outdir):
 def code_mask(text):
     """True for characters that are code (not comment); strings count as code."""
     mask = [True] * len(text)
-    i, n, in_str = 0, len(text), False
-    while i < n:
-        ch = text[i]
-        if in_str:
-            if ch == '"':
-                in_str = False
-            i += 1
-            continue
-        if ch == '"':
-            in_str = True; i += 1; continue
-        if text.startswith('--', i):
-            j = i + 2
-            while j < n and text[j] != '\n' and not text.startswith('--', j):
-                j += 1
-            end = j + 2 if text.startswith('--', j) else j
-            for k in range(i, min(end, n)):
-                mask[k] = False
-            i = end
-            continue
-        i += 1
+    for a, b in smiscan.comment_spans(text):
+        mask[a:b] = [False] * (b - a)
     return mask
 
 

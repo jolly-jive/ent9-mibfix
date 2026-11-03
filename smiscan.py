@@ -27,31 +27,39 @@ DEF_MACROS = (
 )
 
 
-def strip_comments(text):
-    """Remove ASN.1 comments ("--" to "--" or end of line), keeping strings.
+def comment_spans(text):
+    """Yield (start, end) of each ASN.1 comment: "--" to the next "--" or end of line.
 
-    Strings may span lines; comments may not. Quotes inside comments are ignored.
+    Strings ("...") may span lines and hide "--"; comments may not span lines,
+    and quotes inside them are ignored. The end of line is not part of a comment.
     """
-    res, i, n, in_str = [], 0, len(text), False
+    i, n = 0, len(text)
     while i < n:
-        ch = text[i]
-        if in_str:
-            res.append(ch)
-            if ch == '"':
-                in_str = False
-            i += 1
+        q = text.find('"', i)
+        c = text.find('--', i)
+        if c < 0:
+            return
+        if 0 <= q < c:  # skip the string
+            e = text.find('"', q + 1)
+            if e < 0:
+                return
+            i = e + 1
             continue
-        if ch == '"':
-            in_str = True
-            res.append(ch); i += 1
-            continue
-        if text.startswith('--', i):
-            j = i + 2
-            while j < n and text[j] != '\n' and not text.startswith('--', j):
-                j += 1
-            i = j + 2 if text.startswith('--', j) else j
-            continue
-        res.append(ch); i += 1
+        j = c + 2
+        while j < n and text[j] != '\n' and not text.startswith('--', j):
+            j += 1
+        end = j + 2 if text.startswith('--', j) else j
+        yield c, min(end, n)
+        i = end
+
+
+def strip_comments(text):
+    """Remove ASN.1 comments (see comment_spans), keeping strings."""
+    res, i = [], 0
+    for a, b in comment_spans(text):
+        res.append(text[i:a])
+        i = b
+    res.append(text[i:])
     return ''.join(res)
 
 
