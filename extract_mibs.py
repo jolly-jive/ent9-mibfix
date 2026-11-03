@@ -224,11 +224,15 @@ class OidIndex:
 
     def lookup(self, mod, name):
         """Module whose definition of name is visible from mod."""
-        info = self.mods.get(mod)
-        if info and name in info['defs']:
-            return mod
-        if info and name in info['imports'] and info['imports'][name] in self.mods:
-            return self.lookup(info['imports'][name], name)
+        seen = set()
+        while mod not in seen:  # broken MIBs may import a name in a circle
+            seen.add(mod)
+            info = self.mods.get(mod)
+            if info and name in info['defs']:
+                return mod
+            if not (info and name in info['imports'] and info['imports'][name] in self.mods):
+                break
+            mod = info['imports'][name]
         return self.anywhere.get(name)
 
     def resolve(self, mod, name, seen=()):

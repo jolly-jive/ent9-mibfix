@@ -204,6 +204,17 @@ class NotificationTest(unittest.TestCase):
                          {'TRAP-MIB': ['trapFanFailed', 'trapV1Fan']})
 
 
+class IndexTest(unittest.TestCase):
+    def test_import_cycle(self):
+        # A imports x from B and B imports x from A; neither defines it
+        mods = {'A': {'imports': {'x': 'B'}, 'defs': {'y': ('OBJECT IDENTIFIER', ['x', 1])},
+                      'notifs': {}, 'path': 'A'},
+                'B': {'imports': {'x': 'A'}, 'defs': {}, 'notifs': {}, 'path': 'B'}}
+        index = extract_mibs.OidIndex(mods)
+        self.assertIsNone(index.lookup('A', 'x'))
+        self.assertIsNone(index.resolve('A', 'y'))
+
+
 def fake_mods(imports):
     """{module: [imported modules]} -> the shape load_modules returns."""
     return {m: {'imports': {'%s-%d' % (d, i): d for i, d in enumerate(deps)}, 'path': m}
