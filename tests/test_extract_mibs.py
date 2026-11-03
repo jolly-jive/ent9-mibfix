@@ -215,6 +215,37 @@ class IndexTest(unittest.TestCase):
         self.assertIsNone(index.resolve('A', 'y'))
 
 
+class CacheTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.cache = os.path.join(tmp.name, 'cache', 'modules.pickle')
+        self.a, self.b = os.path.join(tmp.name, 'a'), os.path.join(tmp.name, 'b')
+        for d in (self.a, self.b):
+            os.mkdir(d)
+            for name in ('OBJ-MIB', 'TRAP-MIB'):
+                with open(os.path.join(d, name + '.my'), 'w') as fh:
+                    fh.write(OBJ_MIB.replace('OBJ-MIB', name, 1))
+
+    def keys(self):
+        return sorted(os.path.relpath(k, os.path.dirname(self.a))
+                      for k in extract_mibs.read_cache(self.cache))
+
+    def test_reuse_and_prune(self):
+        extract_mibs.load_modules([self.a], cache=self.cache)
+        extract_mibs.load_modules([self.b], cache=self.cache)
+        self.assertEqual(self.keys(), [os.path.join(d, f) for d in 'ab'
+                                       for f in ('OBJ-MIB.my', 'TRAP-MIB.my')])
+        os.remove(os.path.join(self.a, 'TRAP-MIB.my'))
+        mods = extract_mibs.load_modules([self.a], cache=self.cache)
+        self.assertEqual(sorted(mods), ['OBJ-MIB'])
+        self.assertNotIn(os.path.join('a', 'TRAP-MIB.my'), self.keys())
+        self.assertIn(os.path.join('b', 'TRAP-MIB.my'), self.keys())  # not scanned: kept
+        shutil.rmtree(self.b)
+        extract_mibs.load_modules([self.a], cache=self.cache)
+        self.assertEqual(self.keys(), [os.path.join('a', 'OBJ-MIB.my')])
+
+
 def fake_mods(imports):
     """{module: [imported modules]} -> the shape load_modules returns."""
     return {m: {'imports': {'%s-%d' % (d, i): d for i, d in enumerate(deps)}, 'path': m}

@@ -103,7 +103,8 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
     """Return {module: info} for every MIB file in mibdirs.
 
     Scan results are kept in cache (a file path; default cache_path(), '' for
-    none) and reused while a file's size and mtime stay the same.
+    none) and reused while a file's size and mtime stay the same. Entries for
+    files that are gone from mibdirs, or whose directory is gone, are dropped.
     """
     if cache is None:
         cache = cache_path()
@@ -111,6 +112,7 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
     changed = False
     mods = {}
     paths = [os.path.join(d, f) for d in mibdirs for f in sorted(os.listdir(d))]
+    seen = set()
     for i, p in enumerate(paths, 1):
         progress.show('reading MIB files: %d/%d' % (i, len(paths)), force=False)
         try:
@@ -120,6 +122,7 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
         if not stat.S_ISREG(st.st_mode):
             continue
         key, sig = os.path.abspath(p), (st.st_mtime_ns, st.st_size)
+        seen.add(key)
         hit = cached.get(key)
         if hit and hit[0] == sig:
             entry = hit[1]
@@ -131,9 +134,25 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
             continue
         mod, imports, defs, notifs = entry
         mods[mod] = {'path': p, 'imports': imports, 'defs': defs, 'notifs': notifs}
-    if cache and changed:
-        write_cache(cache, cached)
+    if cache:
+        if prune_cache(cached, seen, mibdirs):
+            changed = True
+        if changed:
+            write_cache(cache, cached)
     return mods
+
+
+def prune_cache(cached, seen, mibdirs):
+    """Drop entries of files deleted from mibdirs and of directories that are gone.
+
+    seen holds the files found in mibdirs. Returns True if anything was dropped.
+    """
+    scanned = {os.path.abspath(d) for d in mibdirs}
+    gone = {d for d in {os.path.dirname(k) for k in cached} - scanned if not os.path.isdir(d)}
+    stale = [k for k in cached if k not in seen and os.path.dirname(k) in scanned | gone]
+    for k in stale:
+        del cached[k]
+    return bool(stale)
 
 
 def module_names(d):
