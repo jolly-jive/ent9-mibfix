@@ -1,4 +1,4 @@
-# <img src="icon.svg" alt="" width="40" height="40" align="middle"> ent9-mibfix
+# <img src="docs/images/icon.svg" alt="" width="40" height="40" align="middle"> ent9-mibfix
 
 [日本語](README.ja.md)
 
