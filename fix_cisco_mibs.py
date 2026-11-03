@@ -61,13 +61,19 @@ class Steps(extract_mibs.Progress):
             yield x
 
 
-PROGRESS = Steps(0, quiet=True)
+PROGRESS = Steps(0, quiet=True)  # replaced by run()
 
 # Messages are written in English here. Their Japanese versions (for
 # CHANGES.ja.md) are in messages.ja.json, keyed by the English text.
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messages.ja.json'),
-          encoding='utf-8') as _fh:
-    JA = json.load(_fh)
+_JA = {}
+
+
+def ja_messages():
+    if not _JA:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'messages.ja.json'),
+                  encoding='utf-8') as fh:
+            _JA.update(json.load(fh))
+    return _JA
 
 
 class Msg:
@@ -86,7 +92,7 @@ class Msg:
             if isinstance(v, list):
                 return ', '.join(arg(x) for x in v)
             return v
-        return (JA[self.text] if ja else self.text).format(**{k: arg(v) for k, v in self.args.items()})
+        return (ja_messages()[self.text] if ja else self.text).format(**{k: arg(v) for k, v in self.args.items()})
 
 
 def log(module, kind, text, **args):
@@ -574,34 +580,19 @@ def write_changes_md(path, ja=False):
         fh.write('\n'.join(lines))
 
 
-def main():
+def run(repo, outdir, extra=(), quiet=True):
+    """Build OUT_DIR from the cisco-mibs clone repo. Returns the list of changes."""
     global PROGRESS
-    ap = argparse.ArgumentParser(
-        description="Turn Cisco's public MIBs (v2/) into a self-contained set that loads cleanly.")
-    ap.add_argument('repo', metavar='CISCO_MIBS_REPO',
-                    help='a clone of https://github.com/cisco/cisco-mibs (never modified)')
-    ap.add_argument('outdir', metavar='OUT_DIR',
-                    help='created by this script (aborts if it exists)')
-    ap.add_argument('extra', nargs='*', metavar='EXTRA_MIB_DIR',
-                    help="where to look for standard MIBs that v2/ imports but Cisco "
-                         "does not ship, e.g. Net-SNMP's mibs/")
-    ap.add_argument('-q', '--quiet', action='store_true',
-                    help='do not show progress on stderr')
-    args = ap.parse_args()
-    repo, outdir, extra = args.repo, args.outdir, args.extra
-    if not os.path.isdir(os.path.join(repo, 'v2')):
-        sys.exit(f'{repo}/v2 not found. Give a clone of https://github.com/cisco/cisco-mibs')
-    if os.path.exists(outdir):
-        sys.exit(f'{outdir} already exists. Will not overwrite')
+    del CHANGES[:]
     mibdir = os.path.join(outdir, 'mibs')
     os.makedirs(mibdir)
-    PROGRESS = Steps(8, quiet=args.quiet)
+    PROGRESS = Steps(8, quiet=quiet)
     PROGRESS.step('selecting modules from v2/')
     select_modules(os.path.join(repo, 'v2'), mibdir)
     PROGRESS.step('adding old modules from v1/')
     add_old_modules(os.path.join(repo, 'v1'), mibdir)
     PROGRESS.step('adding missing dependencies')
-    add_missing_dependencies(mibdir, [os.path.join(repo, 'v1')] + extra)
+    add_missing_dependencies(mibdir, [os.path.join(repo, 'v1')] + list(extra))
     PROGRESS.step('applying specific patches')
     specific_patches(mibdir)
     PROGRESS.step('applying generic fixes')
@@ -616,8 +607,30 @@ def main():
     write_changes_md(os.path.join(outdir, 'CHANGES.md'))
     write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), ja=True)
     PROGRESS.clear()
+    PROGRESS = Steps(0, quiet=True)
+    return list(CHANGES)
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Turn Cisco's public MIBs (v2/) into a self-contained set that loads cleanly.")
+    ap.add_argument('repo', metavar='CISCO_MIBS_REPO',
+                    help='a clone of https://github.com/cisco/cisco-mibs (never modified)')
+    ap.add_argument('outdir', metavar='OUT_DIR',
+                    help='created by this script (aborts if it exists)')
+    ap.add_argument('extra', nargs='*', metavar='EXTRA_MIB_DIR',
+                    help="where to look for standard MIBs that v2/ imports but Cisco "
+                         "does not ship, e.g. Net-SNMP's mibs/")
+    ap.add_argument('-q', '--quiet', action='store_true',
+                    help='do not show progress on stderr')
+    args = ap.parse_args()
+    if not os.path.isdir(os.path.join(args.repo, 'v2')):
+        sys.exit(f'{args.repo}/v2 not found. Give a clone of https://github.com/cisco/cisco-mibs')
+    if os.path.exists(args.outdir):
+        sys.exit(f'{args.outdir} already exists. Will not overwrite')
+    changes = run(args.repo, args.outdir, args.extra, args.quiet)
     kinds = {}
-    for c in CHANGES:
+    for c in changes:
         kinds[c['kind']] = kinds.get(c['kind'], 0) + 1
     print(json.dumps(kinds, indent=1))
 
