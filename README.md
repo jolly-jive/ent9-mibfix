@@ -420,6 +420,32 @@ According to the cisco-mibs CONTRIBUTING file, syntax errors and missing imports
 be reported to Cisco TAC together with `smilint` output, and are then filed as bugs.
 `CHANGES.md` can serve as material for such reports.
 
+## Development
+
+Run the tests with:
+
+```sh
+python3 -m unittest discover tests
+```
+
+Some tests need inputs that are not in the repository, and skip themselves without them:
+`out/mibs` (the output of `fix_cisco_mibs.py` for cisco-mibs), `samples/*.md` (`snmpwalk -On`
+captures of real devices, not published; the format is described in
+`tests/test_extract_mibs.py`) and `snmptranslate`. GitHub Actions runs the others on
+Python 3.8 and 3.14 on Linux, and on Windows.
+
+Before committing a change to `fix_cisco_mibs.py` or `smiscan.py`, compare the output
+with the last commit:
+
+```sh
+python3 tools/check_fix_output.py cisco-mibs net-snmp/mibs librenms/mibs
+```
+
+It runs `fix_cisco_mibs.py` as committed (`--baseline REV`, default `HEAD`) and from the
+working tree side by side (about a minute), and prints every file that differs, with a
+diff. The exit status is 1 if anything differs. A refactoring should print `SAME`.
+`--keep DIR` keeps both outputs.
+
 ## License
 
 The scripts in this repository are licensed under the [Apache License 2.0](LICENSE).

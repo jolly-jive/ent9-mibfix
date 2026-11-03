@@ -389,6 +389,29 @@ CableLabs が配布している MIB で、Net-SNMP にも LibreNMS にもあり�
 cisco-mibs の CONTRIBUTING によると、構文の誤りや import 漏れは、`smilint` の出力を付けて
 Cisco TAC に報告すれば、不具合として登録されます。`CHANGES.md` は報告の材料に使えます。
 
+## 開発
+
+テストは次のように実行します。
+
+```sh
+python3 -m unittest discover tests
+```
+
+一部のテストは、リポジトリに無い入力を使い、無ければスキップします。`out/mibs`（cisco-mibs に対する
+`fix_cisco_mibs.py` の出力）、`samples/*.md`（実機の `snmpwalk -On` の結果。公開していません。形式は
+`tests/test_extract_mibs.py` に書いてあります）、`snmptranslate` です。それ以外のテストは、GitHub Actions
+で Linux の Python 3.8 と 3.14、および Windows で実行しています。
+
+`fix_cisco_mibs.py` や `smiscan.py` を変更したら、コミットする前に、直前のコミットと出力を比べます。
+
+```sh
+python3 tools/check_fix_output.py cisco-mibs net-snmp/mibs librenms/mibs
+```
+
+コミット済みの `fix_cisco_mibs.py`（`--baseline REV`、既定は `HEAD`）と作業ツリーの版を並行して実行し
+（1 分ほど）、違いのあるファイルを diff 付きで表示します。違いがあれば終了ステータスは 1 です。
+リファクタリングなら `SAME` と出るはずです。`--keep DIR` で両方の出力を残せます。
+
 ## ライセンス
 
 このリポジトリのスクリプトは [Apache License 2.0](LICENSE) で公開しています。
