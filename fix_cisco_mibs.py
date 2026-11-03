@@ -170,7 +170,7 @@ OLD_TRAP_MODULES = {
 
 
 def add_old_modules(v1dir, outdir):
-    present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
+    present = present_modules(outdir)
     for mod, cands in sorted(collect(v1dir).items()):
         if mod in present:
             continue
@@ -186,52 +186,61 @@ def add_old_modules(v1dir, outdir):
         log(mod, 'added-old', why, file=f)
 
 
+def present_modules(outdir):
+    return {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
+
+
+def imported_modules(path):
+    """The modules a MIB file imports from."""
+    return set(smiscan.parse_imports(smiscan.clean(smiscan.read(path)))[0].values())
+
+
+def import_table(outdir, mods, what=''):
+    """{module: modules it imports} for mods (module names, files in outdir)."""
+    return {m: imported_modules(os.path.join(outdir, m + '.my'))
+            for m in PROGRESS.each(sorted(mods), what)}
+
+
+def unmet(imports):
+    """{module: [modules that import it]} for the imported modules not in imports."""
+    needed = {}
+    for user, deps in sorted(imports.items()):
+        for mod in deps:
+            if mod not in imports:
+                needed.setdefault(mod, []).append(user)
+    return needed
+
+
 def add_missing_dependencies(outdir, search_dirs):
     pool = {}
     for d in search_dirs:
         for mod, cands in collect(d, r'', ' (reading %s)' % d).items():
             cands.sort(reverse=True)
-            pool.setdefault(mod, (d, cands[0][2]))
-    passes = 0
+            pool.setdefault(mod, cands[0][2])
+    imports = import_table(outdir, present_modules(outdir))
     while True:
-        passes += 1
-        present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
-        needed = {}
-        for f in PROGRESS.each(os.listdir(outdir), ' (pass %d)' % passes):
-            if not f.endswith('.my'):
-                continue
-            info = smiscan.scan(smiscan.read(os.path.join(outdir, f)))
-            for mod in set(info['imports'].values()):
-                if mod not in present:
-                    needed.setdefault(mod, []).append(f[:-3])
-        added = 0
-        for mod, users in sorted(needed.items()):
+        added = []
+        for mod, users in sorted(unmet(imports).items()):
             if mod in pool:
-                src = pool[mod][1]
+                src = pool[mod]
                 shutil.copyfile(src, os.path.join(outdir, mod + '.my'))
                 where = os.path.basename(os.path.dirname(src)) + '/' + os.path.basename(src)
-                head = ', '.join(sorted(users)[:5])
+                head = ', '.join(users[:5])
                 if len(users) > 5:
                     text = 'Not in v2/, but imported by {users} and others. Added from {where}'
                 else:
                     text = 'Not in v2/, but imported by {users}. Added from {where}'
                 log(mod, 'added-dependency', text, users=head, where=where)
-                added += 1
+                added.append(mod)
         if not added:
             return
+        # only the files just added can bring in more
+        imports.update(import_table(outdir, added))
 
 
 def report_unresolved_dependencies(outdir):
-    present = {f[:-3] for f in os.listdir(outdir) if f.endswith('.my')}
-    needed = {}
-    for f in PROGRESS.each(os.listdir(outdir)):
-        if f.endswith('.my'):
-            for mod in set(smiscan.scan(smiscan.read(os.path.join(outdir, f)))['imports'].values()):
-                if mod not in present:
-                    needed.setdefault(mod, []).append(f[:-3])
-    for mod, users in sorted(needed.items()):
-        users = ', '.join(sorted(users))
-        log(mod, 'unresolved-dependency', 'Imported by {users}, but not found', users=users)
+    for mod, users in sorted(unmet(import_table(outdir, present_modules(outdir))).items()):
+        log(mod, 'unresolved-dependency', 'Imported by {users}, but not found', users=', '.join(users))
 
 
 # --------------------------------------------------------------------------
