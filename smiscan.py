@@ -103,17 +103,6 @@ def parse_imports(text_clean):
     return imports, m.span(1)
 
 
-def local_defs(text_clean):
-    defs = set()
-    for m in re.finditer(r'^\s*([a-z][A-Za-z0-9-]*)\s+(' + '|'.join(DEF_MACROS) + r')\b', text_clean, re.M):
-        defs.add(m.group(1))
-    for m in re.finditer(r'(?<![A-Za-z0-9-])([a-z][A-Za-z0-9-]*)\s+OBJECT\s+IDENTIFIER\s*::=', text_clean):
-        defs.add(m.group(1))
-    for m in re.finditer(r'^\s*([A-Z][A-Za-z0-9-]*)\s*::=', text_clean, re.M):
-        defs.add(m.group(1))
-    return defs
-
-
 OID_HEAD_RE = re.compile(
     r'^\s*([a-z][A-Za-z0-9-]*)\s+(' + '|'.join(DEF_MACROS) + r')\b'
     r'|(?<![A-Za-z0-9-])([a-z][A-Za-z0-9-]*)\s+OBJECT\s+IDENTIFIER\s*(?=::=)', re.M)
@@ -121,6 +110,14 @@ OID_VALUE_RE = re.compile(r'::=\s*\{([^}]*)\}')
 TRAP_RE = re.compile(r'\bENTERPRISE\s+([a-z][A-Za-z0-9-]*).*?::=\s*(\d+)', re.S)
 NOTIF_OBJECTS_RE = re.compile(r'\b(?:OBJECTS|VARIABLES)\s*\{([^}]*)\}')
 OID_COMP_RE = re.compile(r'([A-Za-z][A-Za-z0-9-]*)(?:\s*\(\s*(\d+)\s*\))?|(\d+)')
+TYPE_DEF_RE = re.compile(r'^\s*([A-Z][A-Za-z0-9-]*)\s*::=', re.M)
+
+
+def local_defs(text_clean):
+    """Names this module defines: macro instances, OBJECT IDENTIFIERs and types."""
+    defs = {m.group(1) or m.group(3) for m in OID_HEAD_RE.finditer(text_clean)}
+    defs.update(TYPE_DEF_RE.findall(text_clean))
+    return defs
 
 
 def oid_assignments(text_clean):
