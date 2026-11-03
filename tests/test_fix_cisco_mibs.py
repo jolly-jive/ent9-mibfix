@@ -253,6 +253,18 @@ class SelectModulesTest(TempDirTest):
         self.assertIn('Kept A-MIB.my (202001010000)', fix.CHANGES[0]['detail'])
 
 
+class ByPreferenceTest(unittest.TestCase):
+    def test_order(self):
+        cands = [('', 'RFC2668-MIB-V1SMI.my', 'a'), ('', 'MAU-MIB-V1SMI.my', 'b'),
+                 ('', 'DOT3-MAU-MIB-V1SMI.my', 'c')]
+        self.assertEqual([c[1] for c in fix.by_preference('MAU-MIB', cands)],
+                         ['MAU-MIB-V1SMI.my', 'DOT3-MAU-MIB-V1SMI.my', 'RFC2668-MIB-V1SMI.my'])
+        cands = [('2001', 'B.my', 'a'), ('2001', 'A.my', 'b'), ('2002', 'Z.my', 'c'),
+                 ('2001', 'X-MIB.txt', 'd')]
+        self.assertEqual([c[1] for c in fix.by_preference('X-MIB', cands)],
+                         ['Z.my', 'X-MIB.txt', 'A.my', 'B.my'])
+
+
 class DependenciesTest(TempDirTest):
     def test_add_and_report(self):
         self.put('out/A-MIB.my', module('A-MIB', 'IMPORTS b FROM B-MIB;\n'))
@@ -289,6 +301,8 @@ class FixImportsTest(TempDirTest):
         details = [c['detail'] for c in fix.CHANGES]
         self.assertIn('FooType is used but was not imported. Added "FROM X-TC-MIB" '
                       '(also defined in: Y-MIB)', details)
+        self.assertIn('NoSuchType is used but not imported, and no single module to import it from '
+                      'was found. Candidates: none', details)
 
 
 class RunTest(TempDirTest):

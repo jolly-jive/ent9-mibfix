@@ -133,11 +133,21 @@ def collect(srcdir, pattern=r'\.my$', what=''):
     return out
 
 
+def by_preference(mod, cands):
+    """cands, (LAST-UPDATED, file, path) each, best first: the newest
+    LAST-UPDATED, then a file named after mod (v1/ adds -V1SMI), then by name."""
+    def named(f):
+        return os.path.splitext(f)[0] in (mod, mod + '-V1SMI')
+    cands = sorted(cands, key=lambda c: c[1])
+    cands.sort(key=lambda c: (c[0], named(c[1])), reverse=True)  # stable: ties keep name order
+    return cands
+
+
 def select_modules(v2dir, outdir):
     mods = collect(v2dir, r'\.(my|txt)$')
     chosen = {}
     for mod, cands in sorted(mods.items()):
-        cands.sort(key=lambda c: (c[0], c[1] == mod + '.my'), reverse=True)
+        cands = by_preference(mod, cands)
         lu, f, p = cands[0]
         chosen[mod] = p
         if len(cands) > 1:
@@ -180,8 +190,7 @@ def add_old_modules(v1dir, outdir):
             why = OLD_TRAP_MODULES[mod]
         else:
             continue
-        cands.sort(reverse=True)
-        lu, f, p = cands[0]
+        lu, f, p = by_preference(mod, cands)[0]
         shutil.copyfile(p, os.path.join(outdir, mod + '.my'))
         log(mod, 'added-old', why, file=f)
 
@@ -215,8 +224,7 @@ def add_missing_dependencies(outdir, search_dirs):
     pool = {}
     for d in search_dirs:
         for mod, cands in collect(d, r'', ' (reading %s)' % d).items():
-            cands.sort(reverse=True)
-            pool.setdefault(mod, cands[0][2])
+            pool.setdefault(mod, by_preference(mod, cands)[0][2])
     imports = import_table(outdir, present_modules(outdir))
     while True:
         added = []
