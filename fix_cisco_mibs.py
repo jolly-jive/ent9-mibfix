@@ -16,6 +16,9 @@ EXTRA_MIB_DIR    where to look for standard MIBs that v2/ imports but Cisco
 
 Prints a count of changes by kind (JSON) to stdout. Progress goes to stderr:
 one line rewritten in place on a terminal, otherwise one line per step.
+Changes that need a look are summed up on stderr, even with -q. The exit status
+is 1 if any targeted fix did not apply (cisco-mibs has likely changed); the
+output is still complete. CHANGES.md names the cisco-mibs commit used.
 
 The source repository is never modified.
 """
@@ -24,6 +27,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -560,9 +564,42 @@ KIND_TITLES = [
 ]
 
 
-def write_changes_md(path, ja=False):
+# kinds that need a look: the input differs from what the script expects
+NEEDS_LOOK = ('patch-not-applied', 'patch-skipped', 'unresolved-dependency', 'import-unresolved')
+# of those, the ones that mean the targeted patches no longer fit upstream
+PATCH_MISSED = ('patch-not-applied', 'patch-skipped')
+
+
+def source_commit(repo):
+    """(commit hash, commit date) of the cisco-mibs clone, or None if git can't tell.
+
+    None also when repo is only a folder inside some other repository.
+    """
+    def git(*args):
+        return subprocess.run(['git', '-C', repo] + list(args), stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, universal_newlines=True,
+                              timeout=60).stdout.strip()
+    try:
+        top = git('rev-parse', '--show-toplevel')
+        if not top or not os.path.samefile(top, repo):
+            return None
+        out = git('log', '-1', '--format=%H %cs').split()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (out[0], out[1]) if len(out) == 2 else None
+
+
+def source_msg(commit):
+    if commit:
+        return Msg('Made from cisco-mibs commit {commit} ({date}).', commit=commit[0], date=commit[1])
+    return Msg('Made from a copy of cisco-mibs that is not a git clone, so its commit is unknown.')
+
+
+def write_changes_md(path, source, ja=False):
+    """source is a Msg naming the cisco-mibs commit (see source_msg)."""
     lines = [Msg('# Changes').render(ja), '',
              Msg('Every change fix_cisco_mibs.py made to the original cisco-mibs/v2.').render(ja),
+             source.render(ja),
              Msg('Items marked "judgment call" are fixes whose intent could not be determined '
                  'from the original MIB alone.').render(ja), '']
     for kind, title in KIND_TITLES:
@@ -601,8 +638,9 @@ def run(repo, outdir, extra=(), quiet=True):
     PROGRESS.step('writing change logs')
     with open(os.path.join(outdir, 'changes.json'), 'w', encoding='utf-8', newline='\n') as fh:
         json.dump(CHANGES, fh, indent=1, ensure_ascii=False)
-    write_changes_md(os.path.join(outdir, 'CHANGES.md'))
-    write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), ja=True)
+    source = source_msg(source_commit(repo))
+    write_changes_md(os.path.join(outdir, 'CHANGES.md'), source)
+    write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), source, ja=True)
     PROGRESS.clear()
     PROGRESS = Steps(0, quiet=True)
     return list(CHANGES)
@@ -630,6 +668,22 @@ def main():
     for c in changes:
         kinds[c['kind']] = kinds.get(c['kind'], 0) + 1
     print(json.dumps(kinds, indent=1))
+    sys.stdout.flush()
+    look = {}
+    for c in changes:
+        if c['kind'] in NEEDS_LOOK:
+            look.setdefault(c['kind'], []).append(c['module'])
+    for kind, title in KIND_TITLES:
+        if kind in look:
+            print('warning: %s (%d): %s' % (title, len(look[kind]), ', '.join(sorted(set(look[kind])))),
+                  file=sys.stderr)
+    if look:
+        print('warning: see %s for details' % os.path.join(args.outdir, 'CHANGES.md'), file=sys.stderr)
+    if any(k in look for k in PATCH_MISSED):
+        # the output is complete, but cisco-mibs no longer matches what the patches expect
+        print('error: some fixes did not apply; cisco-mibs may have changed since this '
+              'script was written', file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

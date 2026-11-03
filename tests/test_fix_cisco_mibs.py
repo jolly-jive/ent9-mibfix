@@ -6,6 +6,8 @@ Needs nothing outside the repository. Run: python3 -m unittest discover tests
 """
 import filecmp
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -341,6 +343,36 @@ class RunTest(TempDirTest):
         self.assertIn('\nreload TRAP-TYPE\n    ENTERPRISE cisco', trap)
         with open(os.path.join(out, 'CHANGES.ja.md'), encoding='utf-8') as fh:
             self.assertIn('## v1 から追加した古いモジュール（2 件）', fh.read())
+        with open(os.path.join(out, 'CHANGES.md'), encoding='utf-8') as fh:
+            self.assertIn('\nMade from a copy of cisco-mibs that is not a git clone, '
+                          'so its commit is unknown.\n', fh.read())
+
+    def test_main_reports_fixes_that_did_not_apply(self):
+        # the look-alike has none of the modules the targeted patches are for
+        out = os.path.join(self.dir, 'out')
+        proc = subprocess.run([sys.executable, os.path.join(TOP, 'fix_cisco_mibs.py'), '-q',
+                               self.repo, out], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              universal_newlines=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn('"patch-skipped"', proc.stdout)
+        self.assertIn('warning: Skipped fixes (', proc.stderr)
+        self.assertIn('ADMIN-AUTH-STATS-MIB', proc.stderr)
+        self.assertIn('error: some fixes did not apply', proc.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(out, 'CHANGES.md')))
+
+    @unittest.skipUnless(shutil.which('git'), 'needs git')
+    def test_source_commit(self):
+        env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@example.com',
+                   GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@example.com',
+                   GIT_COMMITTER_DATE='2026-09-29T12:00:00+00:00')
+        for cmd in (['init', '-q'], ['add', '.'], ['commit', '-q', '-m', 'x']):
+            subprocess.run(['git', '-C', self.repo] + cmd, env=env, check=True)
+        commit = fix.source_commit(self.repo)
+        self.assertEqual(len(commit[0]), 40)
+        self.assertEqual(commit[1], '2026-09-29')
+        self.assertIsNone(fix.source_commit(self.dir + '-none'))
+        # a plain folder inside the clone is not the clone
+        self.assertIsNone(fix.source_commit(os.path.join(self.repo, 'v2')))
 
     def test_same_output_twice(self):
         a, b = os.path.join(self.dir, 'a'), os.path.join(self.dir, 'b')

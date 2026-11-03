@@ -38,6 +38,8 @@
  "none": "なし",
  "# Changes": "# 変更記録",
  "Every change fix_cisco_mibs.py made to the original cisco-mibs/v2.": "fix_cisco_mibs.py が元の cisco-mibs/v2 に対して行った変更の一覧です。",
+ "Made from cisco-mibs commit {commit} ({date}).": "元にした cisco-mibs のコミットは {commit}（{date}）です。",
+ "Made from a copy of cisco-mibs that is not a git clone, so its commit is unknown.": "元にした cisco-mibs は git の clone ではないため、コミットは不明です。",
  "Items marked \"judgment call\" are fixes whose intent could not be determined from the original MIB alone.": "「推定を含む」と書いたものは、元の MIB からは意図が一意に決まらず、判断を入れた修正です。",
  "## {title} ({n})": "## {title}（{n} 件）",
  "Unresolved dependencies (modules not found)": "未解決の依存（入手できなかったモジュール）",

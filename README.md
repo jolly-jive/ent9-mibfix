@@ -91,12 +91,20 @@ The output:
 | `OUT_DIR/CHANGES.ja.md` | The same, in Japanese |
 | `OUT_DIR/changes.json` | The same, machine-readable (`detail` in English, `detail_ja` in Japanese) |
 
-Modules that could not be found are listed under "Unresolved dependencies" in `CHANGES.md`.
+`CHANGES.md` also names the cisco-mibs commit the output was made from. Modules that could
+not be found are listed under "Unresolved dependencies".
 
-The conversion takes a few minutes. Progress goes to stderr: on a terminal, one line
+The conversion takes about a minute. Progress goes to stderr: on a terminal, one line
 rewritten in place (step and percentage, like `[3/8] adding missing dependencies (pass 2): 47% (790/1667)`);
 otherwise, such as when redirected to a log file, one line per step. At the end, the
 number of changes of each kind is printed to stdout as JSON.
+
+If anything needs a look (fixes that did not apply, modules or imports that could not
+be resolved), one warning per kind goes to stderr, even with `-q`. The exit status is 1
+if any of the targeted fixes did not apply. That usually means cisco-mibs has changed
+since this script was written; the output is still complete. With the commit tested
+here, the only warning is the missing DOCS-PNM-MIB (see
+[Known limitations](#docs-pnm-mib-cablelabs)).
 
 ### Where the standard MIBs come from
 
