@@ -27,6 +27,12 @@ DEF_MACROS = (
 )
 
 
+def read(path):
+    """Text of a MIB file. MIBs are meant to be ASCII; Latin-1 reads any byte."""
+    with open(path, encoding='latin-1') as fh:
+        return fh.read()
+
+
 def comment_spans(text):
     """Yield (start, end) of each ASN.1 comment: "--" to the next "--" or end of line.
 

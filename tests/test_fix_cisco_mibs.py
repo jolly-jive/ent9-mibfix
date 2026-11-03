@@ -45,7 +45,7 @@ class TempDirTest(unittest.TestCase):
         return p
 
     def get(self, rel):
-        return fix.read(os.path.join(self.dir, rel))
+        return smiscan.read(os.path.join(self.dir, rel))
 
     def kinds(self):
         return sorted((c['module'], c['kind']) for c in fix.CHANGES)
@@ -262,7 +262,7 @@ class DependenciesTest(TempDirTest):
         fix.add_missing_dependencies(out, [os.path.join(self.dir, 's1'), os.path.join(self.dir, 's2')])
         fix.report_unresolved_dependencies(out)
         # the first directory wins, even over a newer copy
-        self.assertEqual(self.get('out/B-MIB.my'), fix.read(b1))
+        self.assertEqual(self.get('out/B-MIB.my'), smiscan.read(b1))
         self.assertEqual(self.kinds(), [('B-MIB', 'added-dependency'), ('C-MIB', 'unresolved-dependency')])
         self.assertIn('Added from s1/B-MIB.txt', fix.CHANGES[0]['detail'])
         self.assertEqual(fix.CHANGES[1]['detail'], 'Imported by B-MIB, but not found')

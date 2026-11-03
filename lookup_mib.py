@@ -31,6 +31,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import extract_mibs  # noqa: E402
 import smiscan  # noqa: E402
+from progress import Progress  # noqa: E402
 
 NUMERIC_RE = re.compile(r'^\.?(\d+(?:\.\d+)*)$')
 SYMBOLIC_RE = re.compile(r'^(?:([A-Za-z][A-Za-z0-9_-]*)::)?([A-Za-z][A-Za-z0-9-]*)((?:\.\d+)*)$')
@@ -81,7 +82,7 @@ class Lookup:
 
 def definition(path, name, kind):
     """The definition of name in path, comments removed, or None."""
-    text = smiscan.strip_comments(extract_mibs.read(path))
+    text = smiscan.strip_comments(smiscan.read(path))
     kind_re = r'OBJECT\s+IDENTIFIER' if kind == 'OBJECT IDENTIFIER' else re.escape(kind)
     m = re.search(r'(?<![A-Za-z0-9-])' + re.escape(name) + r'\s+' + kind_re + r'\b', text)
     if not m:
@@ -167,7 +168,7 @@ def main():
             sys.exit('error: give a QUERY, pipe queries into stdin, or use --input FILE')
         queries = list(read_queries(extract_mibs.open_input(args.input)))
 
-    progress = extract_mibs.Progress(quiet=args.quiet)
+    progress = Progress(quiet=args.quiet)
     mods = extract_mibs.load_modules(mibdirs, progress)
     progress.show('indexing OIDs')
     lookup = Lookup(mods, extract_mibs.OidIndex(mods))

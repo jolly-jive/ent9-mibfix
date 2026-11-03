@@ -39,6 +39,7 @@ import time
 import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from progress import QUIET, Progress  # noqa: E402
 import smiscan  # noqa: E402
 
 DEFAULT_PREFIXES = ('1.3.6.1.4.1.9', '1.3.6.1.4.1.14179')
@@ -46,66 +47,6 @@ ROOTS = {'ccitt': (0,), 'iso': (1,), 'joint-iso-ccitt': (2,)}
 
 NUMERIC_RE = re.compile(r'^\.?(\d+(?:\.\d+)+)\s+=')
 SYMBOLIC_RE = re.compile(r'^[A-Za-z][A-Za-z0-9-]*(?:::|\.)\S*\s+=')
-
-
-def read(p):
-    with open(p, encoding='latin-1') as fh:
-        return fh.read()
-
-
-def enable_vt(stream):
-    """True if stream's terminal handles escape sequences (on Windows, turn them on)."""
-    if os.name != 'nt':
-        return True
-    try:
-        import ctypes
-        import msvcrt
-        kernel32 = ctypes.windll.kernel32
-        handle = msvcrt.get_osfhandle(stream.fileno())
-        mode = ctypes.c_ulong()
-        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            return False
-        # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-        return bool(mode.value & 4 or kernel32.SetConsoleMode(handle, mode.value | 4))
-    except Exception:
-        return False
-
-
-class Progress:
-    """One status line on stderr, rewritten in place. Silent unless stderr is a tty."""
-
-    def __init__(self, stream=sys.stderr, quiet=False):
-        self.stream = stream
-        self.on = not quiet and stream.isatty()
-        self.vt = self.on and enable_vt(stream)
-        self.last = 0
-        self.width = 0  # length of the line shown, to blank it without escapes
-
-    def show(self, msg, force=True):
-        if not self.on:
-            return
-        now = time.monotonic()
-        if not force and now - self.last < 0.2:
-            return
-        self.last = now
-        if self.vt:
-            self.stream.write('\r\033[K' + msg)
-        else:
-            self.stream.write('\r' + msg.ljust(self.width))
-            self.width = len(msg)
-        self.stream.flush()
-
-    def clear(self):
-        if self.on:
-            if self.vt:
-                self.stream.write('\r\033[K')
-            else:
-                self.stream.write('\r' + ' ' * self.width + '\r')
-                self.width = 0
-            self.stream.flush()
-
-
-QUIET = Progress(open(os.devnull, 'w'))
 
 
 # --------------------------------------------------------------------------
@@ -148,7 +89,7 @@ def write_cache(path, files):
 
 def scan_file(p):
     """(module, imports, defs, notifs) of a MIB file, or None if it has no module."""
-    tc = smiscan.clean(read(p))
+    tc = smiscan.clean(smiscan.read(p))
     mod = smiscan.module_name(tc)
     if not mod:
         return None
@@ -200,7 +141,7 @@ def module_names(d):
     names = set()
     for root, _, files in os.walk(d, followlinks=True):
         for f in files:
-            mod = smiscan.module_name(smiscan.clean(read(os.path.join(root, f))))
+            mod = smiscan.module_name(smiscan.clean(smiscan.read(os.path.join(root, f))))
             if mod:
                 names.add(mod)
     return names

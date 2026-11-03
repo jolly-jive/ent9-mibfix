@@ -27,19 +27,19 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import extract_mibs  # noqa: E402
 import smiscan  # noqa: E402
+from progress import Progress  # noqa: E402
 
 CHANGES = []
 
 
-class Steps(extract_mibs.Progress):
+class Steps(Progress):
     """Progress as "[n/N] step: 47% (i/total)", rewritten in place on a terminal.
 
     Off a terminal (e.g. a log file), only the step titles are printed, one per line.
     """
 
-    def __init__(self, total, stream=sys.stderr, quiet=False):
+    def __init__(self, total, stream=None, quiet=False):
         super().__init__(stream, quiet)
         self.lines = not quiet and not self.on
         self.total, self.n, self.title = total, 0, ''
@@ -100,11 +100,6 @@ def log(module, kind, text, **args):
     CHANGES.append({'module': module, 'kind': kind, 'detail': msg.render(), 'detail_ja': msg.render(ja=True)})
 
 
-def read(p):
-    with open(p, encoding='latin-1') as fh:
-        return fh.read()
-
-
 def write(p, text):
     with open(p, 'w', encoding='latin-1', newline='\n') as fh:
         fh.write(text)
@@ -131,7 +126,7 @@ def collect(srcdir, pattern=r'\.my$', what=''):
         p = os.path.join(srcdir, f)
         if not os.path.isfile(p) or not re.search(pattern, f):
             continue
-        text = read(p)
+        text = smiscan.read(p)
         mod, lu = header_info(text)
         if mod:
             out.setdefault(mod, []).append((lu, f, p))
@@ -205,7 +200,7 @@ def add_missing_dependencies(outdir, search_dirs):
         for f in PROGRESS.each(os.listdir(outdir), ' (pass %d)' % passes):
             if not f.endswith('.my'):
                 continue
-            info = smiscan.scan(read(os.path.join(outdir, f)))
+            info = smiscan.scan(smiscan.read(os.path.join(outdir, f)))
             for mod in set(info['imports'].values()):
                 if mod not in present:
                     needed.setdefault(mod, []).append(f[:-3])
@@ -231,7 +226,7 @@ def report_unresolved_dependencies(outdir):
     needed = {}
     for f in PROGRESS.each(os.listdir(outdir)):
         if f.endswith('.my'):
-            for mod in set(smiscan.scan(read(os.path.join(outdir, f)))['imports'].values()):
+            for mod in set(smiscan.scan(smiscan.read(os.path.join(outdir, f)))['imports'].values()):
                 if mod not in present:
                     needed.setdefault(mod, []).append(f[:-3])
     for mod, users in sorted(needed.items()):
@@ -249,7 +244,7 @@ def patch(outdir, mod, old, new, desc, count=1, regex=False):
     if not os.path.exists(p):
         log(mod, 'patch-skipped', 'Module not found: {desc}', desc=Msg(desc))
         return
-    text = read(p)
+    text = smiscan.read(p)
     if regex:
         new_text, n = re.subn(old, new, text, count=0 if count == 0 else count)
     else:
@@ -303,7 +298,7 @@ def specific_patches(outdir):
     # names coldStart, linkDown etc. resolve there instead of SNMPv2-MIB/IF-MIB.
     p = os.path.join(outdir, 'CISCOTRAP-MIB.my')
     if os.path.exists(p):
-        text = read(p)
+        text = smiscan.read(p)
         pat = re.compile(r'^[ \t]*\w+\s+TRAP-TYPE\s+ENTERPRISE\s+snmp\b.*?::=[^\n]*$', re.M | re.S)
         names = [m.group().split()[0] for m in pat.finditer(text)]
         if names:
@@ -321,7 +316,7 @@ def specific_patches(outdir):
     # AGENT-CAPABILITIES whose OID clauses were left after every VARIATION
     p = os.path.join(outdir, 'CISCO-ATM-PVCTRAP-EXTN-CAPABILITY.my')
     if os.path.exists(p):
-        text = read(p)
+        text = smiscan.read(p)
         pat = re.compile(r'^(\s*)(::=\s*\{\s*ciscoATMPVCTRAPExtnCapability\s+\d+\s*\})', re.M)
         hits = pat.findall(text)
         if len(hits) > 1:
@@ -352,7 +347,7 @@ def generic_fixes(outdir):
             continue
         mod = f[:-3]
         p = os.path.join(outdir, f)
-        text = read(p)
+        text = smiscan.read(p)
         orig = text
 
         # 4a. "SYNTAX BITS" with no named bits -> OCTET STRING (same wire encoding)
@@ -482,7 +477,7 @@ def fix_imports(outdir):
     mods = {}
     for f in PROGRESS.each(sorted(os.listdir(outdir)), ' (reading)'):
         if f.endswith('.my'):
-            info = smiscan.scan(read(os.path.join(outdir, f)))
+            info = smiscan.scan(smiscan.read(os.path.join(outdir, f)))
             if info['module']:
                 mods[info['module']] = info
     definers = {}
@@ -495,7 +490,7 @@ def fix_imports(outdir):
         if not missing:
             continue
         p = os.path.join(outdir, name + '.my')
-        text = read(p)
+        text = smiscan.read(p)
         for sym in missing:
             cands = definers.get(sym, [])
             pick = PREFERRED.get(sym) if PREFERRED.get(sym) in mods else None
