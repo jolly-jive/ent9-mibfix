@@ -523,6 +523,14 @@ def archive_format(path):
     return None
 
 
+def same_names(paths):
+    """{file name: [paths]} for the names that more than one of paths has."""
+    by_name = {}
+    for p in paths:
+        by_name.setdefault(os.path.basename(p), []).append(p)
+    return {n: sorted(ps) for n, ps in sorted(by_name.items()) if len(ps) > 1}
+
+
 def write_archive(path, files):
     top, ext = archive_format(path)
     if ext == '.zip':
@@ -610,6 +618,13 @@ def main():
     progress.clear()
 
     needed, skipped, missing = dependencies(mods, direct | set(notifiers), exclude)
+    if args.archive or args.verify:
+        # both put the files side by side in one folder
+        clash = same_names(mods[m]['path'] for m in needed)
+        if clash:
+            sys.exit('error: --archive and --verify need distinct file names, but these '
+                     'files have the same name:\n' +
+                     '\n'.join('  ' + ', '.join(ps) for ps in clash.values()))
     files = print_files(mods, needed, args.load_order)
     if args.archive:
         write_archive(args.archive, files)

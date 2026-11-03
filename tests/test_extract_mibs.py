@@ -246,6 +246,14 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(self.keys(), [os.path.join('a', 'OBJ-MIB.my')])
 
 
+class SameNamesTest(unittest.TestCase):
+    def test_same_names(self):
+        paths = [os.path.join('a', 'X.my'), os.path.join('b', 'Y.my'), os.path.join('b', 'X.my')]
+        self.assertEqual(extract_mibs.same_names(paths),
+                         {'X.my': [os.path.join('a', 'X.my'), os.path.join('b', 'X.my')]})
+        self.assertEqual(extract_mibs.same_names(paths[:2]), {})
+
+
 def fake_mods(imports):
     """{module: [imported modules]} -> the shape load_modules returns."""
     return {m: {'imports': {'%s-%d' % (d, i): d for i, d in enumerate(deps)}, 'path': m}
