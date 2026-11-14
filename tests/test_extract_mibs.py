@@ -254,6 +254,48 @@ class SameNamesTest(unittest.TestCase):
         self.assertEqual(extract_mibs.same_names(paths[:2]), {})
 
 
+class ArchiveTest(unittest.TestCase):
+    """--archive must not carry the local owner, and keeps order and contents."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.files = []
+        for name in ('B-MIB.my', 'A-MIB.my'):
+            p = os.path.join(self.tmp, name)
+            with open(p, 'w') as fh:
+                fh.write('%s DEFINITIONS ::= BEGIN END\n' % name[:-3])
+            os.chmod(p, 0o777)
+            self.files.append(p)
+
+    def test_tar(self):
+        import tarfile
+        for ext in ('.tar', '.tar.gz', '.tgz'):
+            with self.subTest(ext=ext):
+                path = os.path.join(self.tmp, 'out' + ext)
+                extract_mibs.write_archive(path, self.files)
+                with tarfile.open(path) as t:
+                    members = t.getmembers()
+                    self.assertEqual([m.name for m in members],
+                                     ['out/B-MIB.my', 'out/A-MIB.my'])
+                    for m in members:
+                        self.assertEqual((m.uid, m.gid, m.uname, m.gname), (0, 0, '', ''))
+                        self.assertEqual(m.mode, 0o644)
+                    self.assertIn(b'B-MIB DEFINITIONS', t.extractfile(members[0]).read())
+
+    def test_zip(self):
+        import zipfile
+        path = os.path.join(self.tmp, 'out.zip')
+        extract_mibs.write_archive(path, self.files)
+        with zipfile.ZipFile(path) as z:
+            infos = z.infolist()
+            self.assertEqual([i.filename for i in infos], ['out/B-MIB.my', 'out/A-MIB.my'])
+            for i in infos:
+                self.assertEqual(i.external_attr >> 16, 0o100644)
+                self.assertEqual(i.compress_type, zipfile.ZIP_DEFLATED)
+            self.assertIn(b'A-MIB DEFINITIONS', z.read('out/A-MIB.my'))
+
+
 def fake_mods(imports):
     """{module: [imported modules]} -> the shape load_modules returns."""
     return {m: {'imports': {'%s-%d' % (d, i): d for i, d in enumerate(deps)}, 'path': m}

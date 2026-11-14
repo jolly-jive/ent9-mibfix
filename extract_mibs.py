@@ -531,17 +531,37 @@ def same_names(paths):
     return {n: sorted(ps) for n, ps in sorted(by_name.items()) if len(ps) > 1}
 
 
+ARCHIVE_FILE_MODE = 0o644
+
+
+def anonymous_tarinfo(ti):
+    """Drop the local owner from a tar member and give it a plain file mode.
+
+    The archive is meant to be handed to others, so it must not carry the
+    user and group names (or ids) of whoever made it, nor the 777 that files
+    on a Windows drive get under WSL.
+    """
+    ti.uid = ti.gid = 0
+    ti.uname = ti.gname = ''
+    ti.mode = ARCHIVE_FILE_MODE
+    return ti
+
+
 def write_archive(path, files):
     top, ext = archive_format(path)
     if ext == '.zip':
         with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
             for p in files:
-                z.write(p, top + '/' + os.path.basename(p))
+                zi = zipfile.ZipInfo.from_file(p, top + '/' + os.path.basename(p))
+                zi.compress_type = zipfile.ZIP_DEFLATED
+                zi.external_attr = (0o100000 | ARCHIVE_FILE_MODE) << 16
+                with open(p, 'rb') as fh:
+                    z.writestr(zi, fh.read())
     else:
         mode = 'w' if ext == '.tar' else 'w:gz'
         with tarfile.open(path, mode) as t:
             for p in files:
-                t.add(p, top + '/' + os.path.basename(p))
+                t.add(p, top + '/' + os.path.basename(p), filter=anonymous_tarinfo)
 
 
 # --------------------------------------------------------------------------
