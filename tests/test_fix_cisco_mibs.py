@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOP = os.path.dirname(HERE)
@@ -373,6 +374,38 @@ class RunTest(TempDirTest):
         self.assertIsNone(fix.source_commit(self.dir + '-none'))
         # a plain folder inside the clone is not the clone
         self.assertIsNone(fix.source_commit(os.path.join(self.repo, 'v2')))
+
+    def leftovers(self):
+        return [f for f in os.listdir(self.dir) if '.tmp-' in f]
+
+    def test_no_work_dir_left(self):
+        fix.run(self.repo, os.path.join(self.dir, 'out'))
+        self.assertEqual(self.leftovers(), [])
+
+    def test_failure_leaves_nothing(self):
+        out = os.path.join(self.dir, 'out')
+        for error in (RuntimeError('boom'), KeyboardInterrupt()):
+            with self.subTest(type(error).__name__), \
+                    mock.patch.object(fix, 'generic_fixes', side_effect=error):
+                with self.assertRaises(type(error)):
+                    fix.run(self.repo, out)
+                self.assertFalse(os.path.exists(out))
+                self.assertEqual(self.leftovers(), [])
+
+    def test_out_dir_created_meanwhile(self):
+        out = os.path.join(self.dir, 'out')
+        real = fix.generic_fixes
+
+        def make_out_dir(mibdir):
+            os.mkdir(out)
+            real(mibdir)
+        with mock.patch.object(fix, 'generic_fixes', side_effect=make_out_dir):
+            with self.assertRaises(FileExistsError):
+                fix.run(self.repo, out)
+        self.assertEqual(os.listdir(out), [])  # left alone
+        work = self.leftovers()
+        self.assertEqual(len(work), 1)  # the finished output is kept there
+        self.assertTrue(os.path.isfile(os.path.join(self.dir, work[0], 'CHANGES.md')))
 
     def test_same_output_twice(self):
         a, b = os.path.join(self.dir, 'a'), os.path.join(self.dir, 'b')

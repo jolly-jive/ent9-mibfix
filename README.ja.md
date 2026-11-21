@@ -87,6 +87,10 @@ fix_cisco_mibs.py CISCO_MIBS_REPO OUT_DIR [EXTRA_MIB_DIR ...] [-q]
 | `OUT_DIR/CHANGES.ja.md` | 同じ内容の日本語版 |
 | `OUT_DIR/changes.json` | 同じ内容の機械可読版（`detail` が英語、`detail_ja` が日本語） |
 
+出力は、まず `OUT_DIR` と同じ場所の `OUT_DIR.tmp-<番号>` に作り、完成した時点で `OUT_DIR` にリネームします。
+そのため、`OUT_DIR` が作りかけの状態になることはありません。失敗した時や Ctrl+C で中断した時は、この
+フォルダを削除します。プロセスを強制終了した時だけは残るので、手で削除してください。
+
 `CHANGES.md` には、元にした cisco-mibs のコミットも書きます。見つからなかったモジュールは
 「未解決の依存」に出ます。
 

@@ -91,6 +91,11 @@ The output:
 | `OUT_DIR/CHANGES.ja.md` | The same, in Japanese |
 | `OUT_DIR/changes.json` | The same, machine-readable (`detail` in English, `detail_ja` in Japanese) |
 
+The script builds everything in `OUT_DIR.tmp-<number>` beside `OUT_DIR` and renames it to
+`OUT_DIR` when done, so `OUT_DIR` never holds a half-made set. If the run fails or is
+interrupted with Ctrl+C, that folder is removed. Only if the process is killed outright
+does it stay behind; delete it by hand.
+
 `CHANGES.md` also names the cisco-mibs commit the output was made from. Modules that could
 not be found are listed under "Unresolved dependencies".
 

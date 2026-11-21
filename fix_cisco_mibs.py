@@ -9,7 +9,8 @@ Usage:
 CISCO_MIBS_REPO  a clone of https://github.com/cisco/cisco-mibs
 OUT_DIR          created by this script (aborts if it exists). Writes one
                  <module name>.my per module to OUT_DIR/mibs/, and logs every
-                 change to OUT_DIR/CHANGES.md, CHANGES.ja.md and changes.json
+                 change to OUT_DIR/CHANGES.md, CHANGES.ja.md and changes.json.
+                 Built in OUT_DIR.tmp-<pid> and renamed when complete
 EXTRA_MIB_DIR    where to look for standard MIBs that v2/ imports but Cisco
                  does not ship (e.g. Net-SNMP's mibs/). May be repeated
 -q, --quiet      do not show progress on stderr
@@ -614,13 +615,10 @@ def write_changes_md(path, source, ja=False):
         fh.write('\n'.join(lines))
 
 
-def run(repo, outdir, extra=(), quiet=True):
-    """Build OUT_DIR from the cisco-mibs clone repo. Returns the list of changes."""
-    global PROGRESS
-    del CHANGES[:]
+def build(repo, outdir, extra):
+    """Write the fixed MIBs and the change logs into outdir (an empty folder)."""
     mibdir = os.path.join(outdir, 'mibs')
     os.makedirs(mibdir)
-    PROGRESS = Steps(8, quiet=quiet)
     PROGRESS.step('selecting modules from v2/')
     select_modules(os.path.join(repo, 'v2'), mibdir)
     PROGRESS.step('adding old modules from v1/')
@@ -641,8 +639,37 @@ def run(repo, outdir, extra=(), quiet=True):
     source = source_msg(source_commit(repo))
     write_changes_md(os.path.join(outdir, 'CHANGES.md'), source)
     write_changes_md(os.path.join(outdir, 'CHANGES.ja.md'), source, ja=True)
-    PROGRESS.clear()
-    PROGRESS = Steps(0, quiet=True)
+
+
+def work_dir(outdir):
+    """Where OUT_DIR is built: beside it, so that the final rename is atomic."""
+    return '%s.tmp-%d' % (os.path.abspath(outdir), os.getpid())
+
+
+def run(repo, outdir, extra=(), quiet=True):
+    """Build OUT_DIR from the cisco-mibs clone repo. Returns the list of changes.
+
+    OUT_DIR only ever appears complete: the work is done in work_dir(outdir),
+    which is renamed to OUT_DIR at the end, or removed if the run fails or is
+    interrupted.
+    """
+    global PROGRESS
+    del CHANGES[:]
+    work = work_dir(outdir)
+    PROGRESS = Steps(8, quiet=quiet)
+    try:
+        build(repo, work, extra)
+    except BaseException:  # KeyboardInterrupt too
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    finally:
+        PROGRESS.clear()
+        PROGRESS = Steps(0, quiet=True)
+    if os.path.exists(outdir):
+        # created by someone else meanwhile; os.rename could replace an empty one
+        raise FileExistsError('%s appeared while this script ran; the output is in %s'
+                              % (outdir, work))
+    os.rename(work, outdir)
     return list(CHANGES)
 
 
@@ -663,7 +690,13 @@ def main():
         sys.exit(f'{args.repo}/v2 not found. Give a clone of https://github.com/cisco/cisco-mibs')
     if os.path.exists(args.outdir):
         sys.exit(f'{args.outdir} already exists. Will not overwrite')
-    changes = run(args.repo, args.outdir, args.extra, args.quiet)
+    try:
+        changes = run(args.repo, args.outdir, args.extra, args.quiet)
+    except KeyboardInterrupt:
+        print('\ninterrupted; %s was not created' % args.outdir, file=sys.stderr)
+        sys.exit(130)
+    except FileExistsError as e:
+        sys.exit('error: %s' % e)
     kinds = {}
     for c in changes:
         kinds[c['kind']] = kinds.get(c['kind'], 0) + 1
