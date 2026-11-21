@@ -1,1 +1,5 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Security problem / セキュリティの問題
+    url: https://github.com/jolly-jive/ent9-mibfix/security/advisories/new
+    about: Report privately, not as an issue (see SECURITY.md) / Issue ではなく非公開で報告してください（SECURITY.md を参照）
