@@ -268,7 +268,8 @@ lookup_mib.py MIB_DIR [MIB_DIR ...] [QUERY ... | -i FILE] [--deps [--exclude-dir
 
 `extract_mibs.py` と `lookup_mib.py` は、MIB ファイルから読んだ内容を `~/.cache/ent9-mibfix/`
 （または `$XDG_CACHE_HOME/ent9-mibfix/`、Windows では `%LOCALAPPDATA%\ent9-mibfix\`）に保存します。次回からは、サイズか時刻が変わったファイルだけを
-読み直します。このフォルダはいつ消しても問題ありません。
+読み直します。キャッシュはただの JSON ファイル（`modules.json`）で、コードは含みません。このフォルダはいつ消しても
+問題ありません。
 
 ## Windows
 

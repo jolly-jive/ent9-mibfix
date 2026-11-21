@@ -26,8 +26,8 @@ import argparse
 import codecs
 import heapq
 import io
+import json
 import os
-import pickle
 import re
 import shutil
 import stat
@@ -53,25 +53,43 @@ SYMBOLIC_RE = re.compile(r'^[A-Za-z][A-Za-z0-9-]*(?:::|\.)\S*\s+=')
 # MIB index
 # --------------------------------------------------------------------------
 
+CACHE_FORMAT = 1
+
+
 def cache_path():
     base = (os.environ.get('XDG_CACHE_HOME')
             or (os.name == 'nt' and os.environ.get('LOCALAPPDATA'))
             or os.path.join(os.path.expanduser('~'), '.cache'))
-    return os.path.join(base, 'ent9-mibfix', 'modules.pickle')
+    return os.path.join(base, 'ent9-mibfix', 'modules.json')
 
 
 def scanner_stamp():
     """Changes when the scanning code changes, so old cache entries are dropped."""
-    return tuple(os.stat(f).st_mtime_ns for f in (smiscan.__file__, __file__))
+    return [os.stat(f).st_mtime_ns for f in (smiscan.__file__, __file__)]
+
+
+def valid_entry(hit):
+    """True if a cache entry has the shape load_modules writes: [[mtime, size], scan]."""
+    if not (isinstance(hit, list) and len(hit) == 2 and isinstance(hit[0], list)):
+        return False
+    scan = hit[1]
+    return scan is None or (isinstance(scan, list) and len(scan) == 4
+                            and isinstance(scan[0], str)
+                            and all(isinstance(x, dict) for x in scan[1:]))
 
 
 def read_cache(path):
+    """{file path: [[mtime_ns, size], scan_file() result]}; empty if unusable.
+
+    The cache is JSON, so a tampered file can at worst give wrong names, never run code.
+    """
     try:
-        with open(path, 'rb') as fh:
-            data = pickle.load(fh)
-        if data.get('stamp') == scanner_stamp():
-            return data['files']
-    except Exception:
+        with open(path, encoding='utf-8') as fh:
+            data = json.load(fh)
+        if (isinstance(data, dict) and data.get('format') == CACHE_FORMAT
+                and data.get('stamp') == scanner_stamp() and isinstance(data.get('files'), dict)):
+            return {k: v for k, v in data['files'].items() if valid_entry(v)}
+    except (OSError, ValueError):
         pass
     return {}
 
@@ -80,9 +98,14 @@ def write_cache(path, files):
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = '%s.%d' % (path, os.getpid())
-        with open(tmp, 'wb') as fh:
-            pickle.dump({'stamp': scanner_stamp(), 'files': files}, fh, pickle.HIGHEST_PROTOCOL)
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            json.dump({'format': CACHE_FORMAT, 'stamp': scanner_stamp(), 'files': files}, fh,
+                      separators=(',', ':'))
         os.replace(tmp, path)
+        # the cache was a pickle before; it can run code when loaded, so don't leave it around
+        old = os.path.join(os.path.dirname(path), 'modules.pickle')
+        if os.path.exists(old):
+            os.remove(old)
     except OSError:
         pass
 
@@ -94,9 +117,9 @@ def scan_file(p):
     if not mod:
         return None
     imports = smiscan.parse_imports(tc)
-    defs = {name: (macro, comps) for name, macro, comps in smiscan.oid_assignments(tc)}
+    defs = {name: [macro, comps] for name, macro, comps in smiscan.oid_assignments(tc)}
     notifs = dict(smiscan.notification_objects(tc))
-    return mod, imports, defs, notifs
+    return [mod, imports, defs, notifs]  # lists, not tuples: it round-trips through JSON
 
 
 def load_modules(mibdirs, progress=QUIET, cache=None):
@@ -121,14 +144,14 @@ def load_modules(mibdirs, progress=QUIET, cache=None):
             continue
         if not stat.S_ISREG(st.st_mode):
             continue
-        key, sig = os.path.abspath(p), (st.st_mtime_ns, st.st_size)
+        key, sig = os.path.abspath(p), [st.st_mtime_ns, st.st_size]
         seen.add(key)
         hit = cached.get(key)
         if hit and hit[0] == sig:
             entry = hit[1]
         else:
             entry = scan_file(p)
-            cached[key] = (sig, entry)
+            cached[key] = [sig, entry]
             changed = True
         if not entry or entry[0] in mods:
             continue

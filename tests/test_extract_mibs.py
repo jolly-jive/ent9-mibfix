@@ -13,11 +13,13 @@ Run: python3 -m unittest discover tests
 import codecs
 import glob
 import io
+import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOP = os.path.dirname(HERE)
@@ -219,7 +221,7 @@ class CacheTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.cache = os.path.join(tmp.name, 'cache', 'modules.pickle')
+        self.cache = os.path.join(tmp.name, 'cache', 'modules.json')
         self.a, self.b = os.path.join(tmp.name, 'a'), os.path.join(tmp.name, 'b')
         for d in (self.a, self.b):
             os.mkdir(d)
@@ -244,6 +246,37 @@ class CacheTest(unittest.TestCase):
         shutil.rmtree(self.b)
         extract_mibs.load_modules([self.a], cache=self.cache)
         self.assertEqual(self.keys(), [os.path.join('a', 'OBJ-MIB.my')])
+
+    def test_cached_scan_is_the_same(self):
+        fresh = extract_mibs.load_modules([self.a], cache='')
+        extract_mibs.load_modules([self.a], cache=self.cache)  # writes the cache
+        with mock.patch.object(extract_mibs, 'scan_file', side_effect=AssertionError('rescanned')):
+            cached = extract_mibs.load_modules([self.a], cache=self.cache)
+        self.assertEqual(cached, fresh)
+        self.assertEqual(extract_mibs.OidIndex(cached).nodes, extract_mibs.OidIndex(fresh).nodes)
+
+    def test_bad_cache_is_ignored(self):
+        os.makedirs(os.path.dirname(self.cache))
+        stamp = extract_mibs.scanner_stamp()
+        key = os.path.abspath(os.path.join(self.a, 'OBJ-MIB.my'))
+        for text in ('not json', '[]', json.dumps({'format': 99, 'stamp': stamp, 'files': {}}),
+                     json.dumps({'format': extract_mibs.CACHE_FORMAT, 'stamp': stamp,
+                                 'files': {key: 'junk', 'x': [[1, 2], [1, {}, {}, {}]]}})):
+            with self.subTest(text[:20]):
+                with open(self.cache, 'w', encoding='utf-8') as fh:
+                    fh.write(text)
+                self.assertEqual(extract_mibs.read_cache(self.cache), {})
+                mods = extract_mibs.load_modules([self.a], cache=self.cache)
+                self.assertEqual(sorted(mods), ['OBJ-MIB', 'TRAP-MIB'])
+
+    def test_old_pickle_cache_is_removed(self):
+        old = os.path.join(os.path.dirname(self.cache), 'modules.pickle')
+        os.makedirs(os.path.dirname(old))
+        with open(old, 'wb') as fh:
+            fh.write(b'never loaded')
+        extract_mibs.load_modules([self.a], cache=self.cache)
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(self.cache))
 
 
 class SameNamesTest(unittest.TestCase):

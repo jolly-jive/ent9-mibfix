@@ -286,7 +286,8 @@ the exit status is then 1.
 `extract_mibs.py` and `lookup_mib.py` keep what they read from the MIB files in
 `~/.cache/ent9-mibfix/` (or `$XDG_CACHE_HOME/ent9-mibfix/`; on Windows,
 `%LOCALAPPDATA%\ent9-mibfix\`). The next run reads only
-the files whose size or time changed. Deleting the folder is always safe.
+the files whose size or time changed. The cache is a plain JSON file (`modules.json`),
+so it holds no code. Deleting the folder is always safe.
 
 ## Windows
 
