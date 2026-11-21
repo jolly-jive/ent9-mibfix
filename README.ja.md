@@ -404,7 +404,8 @@ CableLabs が配布している MIB で、Net-SNMP にも LibreNMS にもあり�
 修正の多くは汎用的なものですが、特定の MIB の特定の箇所を狙った修正もあります。Cisco がリポジトリを
 更新すると、それらは該当箇所が見つからなくなることがあります。その場合は `CHANGES.md` に
 「適用されなかった修正」として記録されますが、新しく入った問題は自動では直りません。
-実行するたびに `CHANGES.md` を確認してください。
+実行するたびに `CHANGES.md` を確認してください。最後に確認したコミットは `UPSTREAM` にあり、cisco-mibs が
+進むと毎月のチェックが知らせます（[上流の追従](#上流の追従)）。
 
 `smiscan.py` は完全な ASN.1 パーサではありません。モジュール名、import、定義、モジュールが使っている
 シンボルを見つけるのに必要な分だけを読み取ります。
@@ -440,6 +441,38 @@ python3 tools/check_fix_output.py cisco-mibs net-snmp/mibs librenms/mibs
 コミット済みの `fix_cisco_mibs.py`（`--baseline REV`、既定は `HEAD`）と作業ツリーの版を並行して実行し
 （1 分ほど）、違いのあるファイルを diff 付きで表示します。違いがあれば終了ステータスは 1 です。
 リファクタリングなら `SAME` と出るはずです。`--keep DIR` で両方の出力を残せます。
+
+### 上流の追従
+
+`UPSTREAM` には、修正内容とこの README の数値を最後に確認したときの、cisco-mibs・Net-SNMP・LibreNMS の
+コミットを書いてあります。GitHub Actions（`.github/workflows/upstream.yml`）が月に 1 回、次を実行します。
+
+```sh
+python3 tools/check_upstream.py
+```
+
+cisco-mibs の `main` の先頭を GitHub に問い合わせ、`UPSTREAM` のコミットと違えば、cisco-mibs を clone して
+両方のコミットで `fix_cisco_mibs.py` を並行して実行し（Net-SNMP と LibreNMS は `UPSTREAM` のコミットを使います）、
+出力を比べます（1 分ほど）。結果はラベル `upstream` の Issue になります。中身は、間のコミット、`v1/` と `v2/`
+で変わったファイル、両方の実行の終了ステータスと警告、違いのある出力ファイルです。変わったのが
+CISCO-PRODUCTS-MIB と CISCO-ENTITY-VENDORTYPE-OID-MIB だけ（毎月の新製品 OID の登録）ならタイトルに
+`[CANA only]` が、当たらなくなった修正があれば `[fixes not applied]` が付きます。Issue が開いている間に
+`main` がまた進むと、結果はその Issue へのコメントとして追加されます。
+
+終了ステータスは、`main` が `UPSTREAM` のままなら 0、進んでいれば 1、エラーなら 2 です。
+`--keep DIR` で clone と両方の出力を残せます。
+
+Issue が来たら:
+
+1. 手元の cisco-mibs の clone を更新して `fix_cisco_mibs.py` を実行します。当たらなくなった修正を直し、
+   変更を `tools/check_fix_output.py` で確かめます。
+2. この README の数値（どのコミットでの値か書いてあります）を測り直し、README.md と README.ja.md の
+   両方を更新します。
+3. `UPSTREAM` を新しいコミットにします。両方の README がそのコミットを書いているかはテストで確かめています。
+4. コミットして Issue を閉じます。
+
+GitHub は、リポジトリに 60 日間動きがないと、スケジュール実行のワークフローを止めます（止めたときはメールが
+来ます）。Actions タブから有効に戻してください。
 
 ## ライセンス
 

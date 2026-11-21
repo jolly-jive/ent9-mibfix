@@ -435,7 +435,8 @@ module, as in `SNMP-COMMUNITY-MIB::snmpTrapCommunity`.
 Most fixes are generic, but some target specific spots in specific MIBs. When Cisco
 updates the repository, those may no longer match. They are then logged as "Fixes not
 applied" in `CHANGES.md`, and new problems are not fixed automatically. Check
-`CHANGES.md` after each run.
+`CHANGES.md` after each run. The commit that was last checked is in `UPSTREAM`, and a
+monthly check reports when cisco-mibs moves on (see [Following upstream](#following-upstream)).
 
 `smiscan.py` is not a full ASN.1 parser. It only reads as much as is needed to find
 module names, imports, definitions and the symbols a module uses.
@@ -475,6 +476,41 @@ It runs `fix_cisco_mibs.py` as committed (`--baseline REV`, default `HEAD`) and 
 working tree side by side (about a minute), and prints every file that differs, with a
 diff. The exit status is 1 if anything differs. A refactoring should print `SAME`.
 `--keep DIR` keeps both outputs.
+
+### Following upstream
+
+`UPSTREAM` holds the commits of cisco-mibs, Net-SNMP and LibreNMS that the fixes and the
+numbers in this README were last checked against. Once a month, GitHub Actions
+(`.github/workflows/upstream.yml`) runs:
+
+```sh
+python3 tools/check_upstream.py
+```
+
+It asks GitHub for the head of cisco-mibs `main`. If that is not the commit in `UPSTREAM`,
+it clones cisco-mibs, runs `fix_cisco_mibs.py` on both commits at the same time (with
+Net-SNMP and LibreNMS at their commits in `UPSTREAM`), and compares the outputs (about a
+minute). The workflow then opens an issue labeled `upstream` with the report: the commits,
+the changed files in `v1/` and `v2/`, the exit status and warnings of both runs, and the
+output files that differ. The title is marked `[CANA only]` when only
+CISCO-PRODUCTS-MIB and CISCO-ENTITY-VENDORTYPE-OID-MIB changed (the monthly registrations
+of new product OIDs), and `[fixes not applied]` when some targeted fixes no longer apply.
+If `main` moves again while the issue is open, the report is added as a comment.
+
+The exit status is 0 if `main` is still at `UPSTREAM`, 1 if it has moved on, 2 on errors.
+`--keep DIR` keeps the clones and both outputs.
+
+When such an issue comes:
+
+1. Update the local cisco-mibs clone and run `fix_cisco_mibs.py`. Fix whatever no longer
+   applies, and check the change with `tools/check_fix_output.py`.
+2. Measure the numbers in this README again (they name the commit they are for) and
+   update them in both README.md and README.ja.md.
+3. Put the new commit in `UPSTREAM`. A test checks that both READMEs name that commit.
+4. Commit, and close the issue.
+
+GitHub turns scheduled workflows off after 60 days without activity in the repository,
+and sends an email when it does. Turn it back on in the Actions tab.
 
 ## License
 

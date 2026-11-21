@@ -1,0 +1,7 @@
+# The commits of the input repositories that fix_cisco_mibs.py and the numbers in the
+# README were last checked against. tools/check_upstream.py compares cisco-mibs main
+# with this, and uses the other two as they are.
+# Format: name commit url
+cisco-mibs c9ab98c03ee051de74edda72f6d5c43ee65cad91 https://github.com/cisco/cisco-mibs
+net-snmp 15e258018a13a56410a48e4cc6bf31fe4fc07997 https://github.com/net-snmp/net-snmp
+librenms 08380b0491b8578e01a625dcc188ea62d7c5814c https://github.com/librenms/librenms

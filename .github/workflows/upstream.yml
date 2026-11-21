@@ -1,0 +1,64 @@
+# Once a month, checks whether cisco/cisco-mibs has moved on from the commit in
+# UPSTREAM (tools/check_upstream.py: clones it, runs fix_cisco_mibs.py on both
+# commits and compares). If it has, opens an issue labeled "upstream" with the
+# report, or comments on the one already open when main has moved again.
+# The clones and outputs live only inside the job; nothing from them is stored
+# except the report (file names, commit subjects, counts).
+#
+# GitHub turns scheduled workflows off after 60 days without activity in the
+# repository, and emails about it. Turn it back on under Actions -> upstream.
+name: upstream
+
+on:
+  schedule:
+    - cron: '17 3 2 * *'  # 03:17 UTC on the 2nd of each month
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # not in forks: they would open issues in their own copy
+    if: github.repository == 'jolly-jive/ent9-mibfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - id: check
+        # exit status 0: no new commits, 1: new commits (report written), 2: error
+        run: |
+          rc=0
+          python tools/check_upstream.py --report-dir "$RUNNER_TEMP/report" || rc=$?
+          if [ "$rc" -gt 1 ]; then exit "$rc"; fi
+          if [ "$rc" -eq 1 ]; then
+            echo moved=true >> "$GITHUB_OUTPUT"
+            cat "$RUNNER_TEMP/report/body.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.check.outputs.moved == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          report="$RUNNER_TEMP/report"
+          title=$(cat "$report/title.txt")
+          gh label create upstream --color c5def5 \
+            --description 'cisco-mibs has moved on from UPSTREAM' 2>/dev/null || true
+          num=$(gh issue list --label upstream --state open --json number --jq '.[0].number // empty')
+          if [ -z "$num" ]; then
+            gh issue create --title "$title" --label upstream --body-file "$report/body.md"
+          elif [ "$(gh issue view "$num" --json title --jq .title)" = "$title" ]; then
+            echo "#$num already reports this commit"
+          else
+            { printf '## %s\n\n' "$title"; cat "$report/body.md"; } > "$report/comment.md"
+            gh issue comment "$num" --body-file "$report/comment.md"
+            gh issue edit "$num" --title "$title"
+          fi
