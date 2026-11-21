@@ -588,14 +588,17 @@ def source_commit(repo):
     None also when repo is only a folder inside some other repository.
     """
     def git(*args):
-        return subprocess.run(['git', '-C', repo] + list(args), stdout=subprocess.PIPE,
+        # repo may come from anyone: keep its config from running commands
+        # (fsmonitor hooks; gpg.program through log.showSignature)
+        return subprocess.run(['git', '-C', repo, '-c', 'core.fsmonitor=false'] + list(args),
+                              stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, universal_newlines=True,
                               timeout=60).stdout.strip()
     try:
         top = git('rev-parse', '--show-toplevel')
         if not top or not os.path.samefile(top, repo):
             return None
-        out = git('log', '-1', '--format=%H %cs').split()
+        out = git('log', '-1', '--no-show-signature', '--format=%H %cs').split()
     except (OSError, subprocess.SubprocessError):
         return None
     return (out[0], out[1]) if len(out) == 2 else None

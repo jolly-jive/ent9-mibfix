@@ -375,6 +375,33 @@ class RunTest(TempDirTest):
         self.assertIn('error: some fixes did not apply', proc.stderr)
         self.assertTrue(os.path.isfile(os.path.join(out, 'CHANGES.md')))
 
+    @unittest.skipUnless(shutil.which('git') and os.name == 'posix', 'needs git and sh')
+    def test_source_commit_ignores_repo_config(self):
+        # a repository that runs gpg.program for "git log" of a signed-looking commit
+        def git(*args, **kw):
+            return subprocess.run(['git', '-C', self.repo] + list(args), check=True,
+                                  stdout=subprocess.PIPE, universal_newlines=True, **kw).stdout
+        git('init', '-q')
+        git('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q',
+            '--allow-empty', '-m', 'base')
+        obj = ('tree %s\nparent %s\nauthor t <t@example.com> 1700000000 +0000\n'
+               'committer t <t@example.com> 1700000000 +0000\n'
+               'gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEz\n -----END PGP SIGNATURE-----\n'
+               '\nsigned\n' % (git('rev-parse', 'HEAD^{tree}').strip(), git('rev-parse', 'HEAD').strip()))
+        signed = git('hash-object', '-t', 'commit', '-w', '--stdin', input=obj).strip()
+        git('update-ref', 'HEAD', signed)
+        marker = os.path.join(self.dir, 'ran')
+        script = self.put('evil.sh', '#!/bin/sh\ntouch %s\nexit 1\n' % marker)
+        os.chmod(script, 0o755)
+        git('config', 'log.showSignature', 'true')
+        git('config', 'gpg.program', script)
+        git('config', 'core.fsmonitor', script)
+        git('log', '-1', '--format=%H')  # plain git does run it
+        self.assertTrue(os.path.exists(marker))
+        os.remove(marker)
+        self.assertEqual(fix.source_commit(self.repo), (signed, '2023-11-14'))
+        self.assertFalse(os.path.exists(marker))
+
     @unittest.skipUnless(shutil.which('git'), 'needs git')
     def test_source_commit(self):
         env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@example.com',
