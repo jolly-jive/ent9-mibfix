@@ -117,8 +117,9 @@ class CliTest(unittest.TestCase):
         proc = subprocess.run([sys.executable, os.path.join(TOP, tool), '-q'] + list(args),
                               input=stdin.encode('utf-8'), stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, env=env or self.env)
+        # on Windows the scripts write \r\n
         return (proc.returncode, proc.stdout.decode('utf-8').splitlines(),
-                proc.stderr.decode('utf-8'))
+                proc.stderr.decode('utf-8').replace('\r\n', '\n'))
 
 
 class ExtractTest(CliTest):
