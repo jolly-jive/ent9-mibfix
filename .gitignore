@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.ruff_cache/
 
 # inputs and output; the MIBs are Cisco's and must not be committed
 cisco-mibs/

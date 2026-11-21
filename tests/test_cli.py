@@ -249,7 +249,7 @@ class ExtractTest(CliTest):
         self.assertEqual(code, 0, err)
         with open(report, encoding='utf-8') as fh:
             text = fh.read()
-        self.assertEqual([l for l in text.splitlines() if not l.startswith('#')], [
+        self.assertEqual([line for line in text.splitlines() if not line.startswith('#')], [
             '.1.3.6.1.4.1.9.77 = x1  # unresolved: cisco.77',
             '.1.3.6.1.4.1.9.97.1.1.2.0 = x2  # X-TABLE-MIB::xAddrValue',
             '.1.3.6.1.4.1.9.97.1.1.9.0 = x1  # X-TABLE-MIB::xAddrEntry.9',

@@ -377,7 +377,8 @@ def generic_fixes(outdir):
 
         # 4a. "SYNTAX BITS" with no named bits -> OCTET STRING (same wire encoding)
         def bare_bits(m):
-            log(mod, 'patched',
+            # called only by the re.sub right below, so mod is the current one
+            log(mod, 'patched',  # noqa: B023
                 'SYNTAX of {name} is BITS with no named bits. BITS is encoded as OCTET STRING '
                 'on the wire, so replaced with OCTET STRING (judgment call)', name=m.group(1))
             return m.group(0).replace('BITS', 'OCTET STRING', 1)
@@ -416,7 +417,7 @@ def generic_fixes(outdir):
             dep = [b for b in blocks if re.search(r'STATUS\s+deprecated', b.group(0))]
             if len(blocks) == 2 and len(dep) == 1:
                 b = dep[0]
-                commented = '\n'.join('-- ' + l for l in b.group(0).split('\n'))
+                commented = '\n'.join('-- ' + line for line in b.group(0).split('\n'))
                 text = text[:b.start()] + '-- (duplicate definition commented out by fix script)\n' + commented + text[b.end():]
                 log(mod, 'patched',
                     '{name} was defined twice with the same OID. Commented out the deprecated one '

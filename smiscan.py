@@ -182,8 +182,7 @@ def oid_assignments(text_clean):
 def notification_objects(text_clean):
     """Yield (name, [objects]) for each NOTIFICATION-TYPE (OBJECTS) and
     TRAP-TYPE (VARIABLES) that lists objects."""
-    heads = list(OID_HEAD_RE.finditer(text_clean))
-    for i, m in enumerate(heads):
+    for m in OID_HEAD_RE.finditer(text_clean):
         if m.group(2) not in ('NOTIFICATION-TYPE', 'TRAP-TYPE'):
             continue
         end = text_clean.find('::=', m.end())

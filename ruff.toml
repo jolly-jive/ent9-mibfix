@@ -1,0 +1,7 @@
+# Lint settings for ruff, which GitHub Actions runs (.github/workflows/test.yml).
+# Only rules that point at likely bugs, not at style. Listed here so that the
+# result does not depend on the defaults of the ruff version.
+target-version = "py38"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]

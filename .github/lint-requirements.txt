@@ -1,0 +1,4 @@
+# ruff for the lint job in .github/workflows/test.yml (Linux x86_64 wheel only).
+# To update: pick a release at least two weeks old and take the sha256 of its
+# manylinux x86_64 wheel from https://pypi.org/pypi/ruff/VERSION/json
+ruff==0.17.4 --hash=sha256:2cd025509b2e15721b426fc70fd946d71f43b3db3b08e946dfec2d696d911690

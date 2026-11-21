@@ -427,6 +427,10 @@ python3 -m unittest discover tests
 `tests/test_extract_mibs.py` に書いてあります）、`snmptranslate` です。それ以外のテストは、GitHub Actions
 で Linux の Python 3.8 と 3.14、および Windows で実行しています。
 
+GitHub Actions では [ruff](https://docs.astral.sh/ruff/)（`ruff check .`）も `ruff.toml` のルールで実行して
+います。ルールは、未使用や未定義の名前など、バグの可能性を示すものだけです。バージョンは
+`.github/lint-requirements.txt` で固定しています。
+
 `fix_cisco_mibs.py` や `smiscan.py` を変更したら、コミットする前に、直前のコミットと出力を比べます。
 
 ```sh

@@ -3,7 +3,8 @@
 #
 # Actions and images are pinned to exact digests, so a moved tag can't change
 # what runs. Dependabot (.github/dependabot.yml) proposes new action versions;
-# the container images are updated by hand (3.8 is end of life and frozen).
+# the container images and ruff (.github/lint-requirements.txt) are updated by
+# hand (3.8 is end of life and frozen).
 name: test
 
 on:
@@ -34,6 +35,18 @@ jobs:
         with:
           persist-credentials: false
       - run: python -m unittest discover -v tests
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: python:3.14.10-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: "pip install --no-deps --only-binary :all: --require-hashes -r .github/lint-requirements.txt"
+      # rules in ruff.toml; findings also show as annotations on the run
+      - run: ruff check --no-cache --output-format github .
 
   windows:
     runs-on: windows-latest

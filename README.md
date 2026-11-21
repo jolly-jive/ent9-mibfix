@@ -460,6 +460,10 @@ captures of real devices, not published; the format is described in
 `tests/test_extract_mibs.py`) and `snmptranslate`. GitHub Actions runs the others on
 Python 3.8 and 3.14 on Linux, and on Windows.
 
+GitHub Actions also runs [ruff](https://docs.astral.sh/ruff/) (`ruff check .`) with the
+rules in `ruff.toml`: only those that point at likely bugs, such as unused or undefined
+names. The version is pinned in `.github/lint-requirements.txt`.
+
 Before committing a change to `fix_cisco_mibs.py` or `smiscan.py`, compare the output
 with the last commit:
 

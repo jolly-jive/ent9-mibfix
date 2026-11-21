@@ -544,7 +544,7 @@ def parse_prefix(s):
     try:
         return tuple(int(c) for c in s.strip('.').split('.'))
     except ValueError:
-        raise argparse.ArgumentTypeError('not a numeric OID: %s' % s)
+        raise argparse.ArgumentTypeError('not a numeric OID: %s' % s) from None
 
 
 # --------------------------------------------------------------------------
