@@ -1,0 +1,46 @@
+name: Problem report / 不具合の報告
+description: A MIB that does not load, an OID that gets no name, a wrong result / MIB が読めない、OID に名前が付かない、結果がおかしい
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please don't paste a raw snmpwalk, or file paths from your machine.** A walk holds
+        host names, addresses and serial numbers, in its values and in the OIDs themselves.
+        Attach the file that `extract_mibs.py ... --report report.txt` writes instead
+        (see "Sharing a walk in an issue" in the README), and look through it first.
+
+        **生の snmpwalk や、手元のファイルパスは貼らないでください。** walk には、値にも OID
+        そのものにも、ホスト名・アドレス・シリアル番号が入っています。代わりに
+        `extract_mibs.py ... --report report.txt` が書くファイルを、中身を確認してから添付してください
+        （README の「Issue で walk を共有する」を参照）。
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened / 起きたこと
+      description: What you expected, and what you got instead / 期待した結果と、実際の結果
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model and OS version / 機種と OS のバージョン
+      placeholder: WS-C3850-48T, IOS-XE 03.07.04E
+  - type: input
+    id: versions
+    attributes:
+      label: cisco-mibs and ent9-mibfix commits / cisco-mibs と ent9-mibfix のコミット
+      description: "`git -C cisco-mibs log -1 --format=%h` and `git log -1 --format=%h` in ent9-mibfix"
+      placeholder: cisco-mibs c9ab98c, ent9-mibfix c262b22
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and its stderr / 実行したコマンドと標準エラーの出力
+      description: Replace your user name or paths with something neutral if they show up / ユーザー名やパスが出ていたら置き換えてください
+      render: text
+  - type: textarea
+    id: report
+    attributes:
+      label: Report file / レポートファイル
+      description: Attach the --report file, or paste the lines that matter / --report のファイルを添付するか、関係する行を貼ってください

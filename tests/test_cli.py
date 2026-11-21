@@ -91,6 +91,45 @@ SNMPv2-SMI::enterprises.9.1 = INTEGER: 1
 '''
 
 
+TABLE_MIB = '''X-TABLE-MIB DEFINITIONS ::= BEGIN
+IMPORTS OBJECT-TYPE, IpAddress FROM SNMPv2-SMI
+        cisco FROM CISCO-SMI;
+xAddrTable OBJECT-TYPE
+    SYNTAX SEQUENCE OF XAddrEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "x"
+    ::= { cisco 97 1 }
+xAddrEntry OBJECT-TYPE
+    SYNTAX XAddrEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "x"
+    INDEX { xAddr }
+    ::= { xAddrTable 1 }
+XAddrEntry ::= SEQUENCE { xAddr IpAddress, xAddrValue INTEGER }
+xAddr OBJECT-TYPE
+    SYNTAX IpAddress
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "x"
+    ::= { xAddrEntry 1 }
+xAddrValue OBJECT-TYPE
+    SYNTAX INTEGER
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "x"
+    ::= { xAddrEntry 2 }
+END
+'''
+
+TABLE_WALK = '''.1.3.6.1.4.1.9.97.1.1.2.192.168.1.1 = INTEGER: 1
+.1.3.6.1.4.1.9.97.1.1.2.192.168.1.2 = INTEGER: 2
+.1.3.6.1.4.1.9.97.1.1.9.192.168.1.1 = INTEGER: 3
+.1.3.6.1.4.1.9.200.5.10.0.0.1 = INTEGER: 4
+'''
+
+
 class CliTest(unittest.TestCase):
     """A MIB directory, an --exclude-dir with SNMPv2-SMI, and a private cache."""
 
@@ -199,6 +238,45 @@ class ExtractTest(CliTest):
                 code, out, err = self.extract(*args, stdin=stdin)
                 self.assertEqual((code, out), (1, []))
                 self.assertIn(message, err)
+
+    def test_report(self):
+        # a table indexed by IP address, with one column no MIB here defines
+        with open(os.path.join(self.mibs, 'X-TABLE-MIB.my'), 'w', newline='\n') as fh:
+            fh.write(TABLE_MIB)
+        walk = WALK + TABLE_WALK
+        report = os.path.join(self.tmp, 'report.txt')
+        code, out, err = self.extract('--report', report, stdin=walk)
+        self.assertEqual(code, 0, err)
+        with open(report, encoding='utf-8') as fh:
+            text = fh.read()
+        self.assertEqual([l for l in text.splitlines() if not l.startswith('#')], [
+            '.1.3.6.1.4.1.9.77 = x1  # unresolved: cisco.77',
+            '.1.3.6.1.4.1.9.97.1.1.2.0 = x2  # X-TABLE-MIB::xAddrValue',
+            '.1.3.6.1.4.1.9.97.1.1.9.0 = x1  # X-TABLE-MIB::xAddrEntry.9',
+            '.1.3.6.1.4.1.9.99.1.0 = x1  # X-OBJ-MIB::xState',
+            '.1.3.6.1.4.1.9.99.2.0 = x1  # X-OBJ-MIB::xName',
+            '.1.3.6.1.4.1.9.200 = x1  # unresolved: cisco.200',
+        ])
+        self.assertIn('# 8 OIDs read, 7 under the prefixes', text)
+        for secret in ('192.168', 'outside the default prefixes', '00 01', self.tmp):
+            self.assertNotIn(secret, text)
+        self.assertIn('warning: 2 OIDs not defined by any MIB (count by subtree):\n'
+                      '       1  cisco.200\n       1  cisco.77', err)
+        self.assertIn('report: 6 lines written to %s; look through it' % report, err)
+        # read back, the report needs the same files
+        code, again, _ = self.extract('--input', report, stdin='')
+        self.assertEqual((code, again), (0, out))
+
+    def test_report_below_unknown_prefix(self):
+        # no MIB knows anything under the prefix: cut one arc below it
+        report = os.path.join(self.tmp, 'report.txt')
+        code, _, err = self.extract('--prefix', '1.3.6.1.4.1.311', '--report', report,
+                                    stdin='.1.3.6.1.4.1.311.5.10.0.0.1 = INTEGER: 1\n')
+        self.assertEqual(code, 0, err)
+        with open(report, encoding='utf-8') as fh:
+            self.assertIn('\n.1.3.6.1.4.1.311.5 = x1  # unresolved: enterprises.311.5\n',
+                          fh.read())
+        self.assertIn('       1  enterprises.311.5', err)
 
     def test_verify_needs_snmptranslate(self):
         env = dict(self.env, PATH=os.path.join(self.tmp, 'empty'))

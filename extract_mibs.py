@@ -21,6 +21,9 @@ TRAP-TYPE that carries a walked object are listed too (--no-notifications: don't
 
 --verify loads only the listed files into Net-SNMP (snmptranslate) and checks
 that every OID gets the same name as with all of MIB_DIR loaded.
+
+--report FILE writes the walk with its values and table indexes removed, to
+attach to an issue: one line per walked object or unresolved subtree.
 """
 import argparse
 import codecs
@@ -204,6 +207,7 @@ class OidIndex:
                 oid = self.resolve(mod, name)
                 if oid:
                     self.nodes.setdefault(oid, []).append((mod, name, macro))
+        self.parents = {oid[:-1] for oid in self.nodes}  # nodes with a defined child
 
     def lookup(self, mod, name):
         """Module whose definition of name is visible from mod."""
@@ -598,6 +602,58 @@ def write_archive(path, files):
 
 
 # --------------------------------------------------------------------------
+# report for issues
+# --------------------------------------------------------------------------
+
+def unresolved_cut(oid, known, prefixes):
+    """oid cut one arc below its deepest known node (known arcs long).
+
+    The arc right below a node a MIB defines is a number from a MIB, not a
+    table index. If no MIB knows even the selecting prefix, cut below that.
+    """
+    known = max([known] + [len(p) for p in prefixes if oid[:len(p)] == p])
+    return oid[:known + 1]
+
+
+def report_lines(index, targets, unresolved, prefixes):
+    """[(OID, count, comment)] for --report, one per object or unresolved subtree.
+
+    No values and no table indexes: an instance of an object becomes the
+    object's OID plus .0, which reads back as an instance of the same object.
+    """
+    rows = {}  # OID -> [count, comment]
+    for oid in targets:
+        if oid in unresolved:
+            cut = unresolved_cut(oid, unresolved[oid], prefixes)
+            comment = 'unresolved: ' + index.name_of(cut)
+        else:
+            prefix, hit = index.match(oid)
+            cut = prefix
+            if prefix in index.parents and len(oid) > len(prefix) + 1:
+                # a table entry whose column no MIB here defines: keep the column
+                cut = oid[:len(prefix) + 1]
+            names = sorted({'%s::%s' % (h[0], h[1]) for h in hit if h[2] == 'OBJECT-TYPE'})
+            comment = ', '.join(names) + ''.join('.%d' % c for c in cut[len(prefix):])
+            cut += (0,)
+        rows.setdefault(cut, [0, comment])[0] += 1
+    return [(oid, n, c) for oid, (n, c) in sorted(rows.items())]
+
+
+def write_report(path, lines, n_read, prefixes):
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('# extract_mibs.py --report: an snmpwalk with values and table indexes removed.\n'
+                 '# One line per MIB object (".0" stands for all its instances) or per subtree\n'
+                 '# that no MIB defines, with the number of walked OIDs it stands for.\n'
+                 '# Check it before you share it. To reproduce:\n'
+                 '#   extract_mibs.py MIB_DIR%s --input THIS_FILE\n'
+                 '# %d OIDs read, %d under the prefixes\n' % (
+                     ''.join(' --prefix ' + '.'.join(map(str, p)) for p in prefixes),
+                     n_read, sum(n for _, n, _ in lines)))
+        for oid, n, comment in lines:
+            fh.write('.%s = x%d  # %s\n' % ('.'.join(map(str, oid)), n, comment))
+
+
+# --------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(
@@ -617,6 +673,9 @@ def main():
                          'subdirectories, e.g. /usr/share/snmp/mibs; may be repeated')
     ap.add_argument('--archive', metavar='FILE',
                     help='also pack the files into FILE (.zip, .tar.gz, .tgz or .tar)')
+    ap.add_argument('--report', metavar='FILE',
+                    help='also write the walk to FILE without values and table indexes, '
+                         'to attach to an issue')
     ap.add_argument('--load-order', action='store_true',
                     help='list the files so that each comes after the ones it imports, '
                          'for tools that load MIBs one at a time (default: by name)')
@@ -681,6 +740,9 @@ def main():
     files = print_files(mods, needed, args.load_order)
     if args.archive:
         write_archive(args.archive, files)
+    if args.report:
+        lines = report_lines(index, targets, unresolved, prefixes)
+        write_report(args.report, lines, len(oids), prefixes)
 
     err = sys.stderr
     print('%d OIDs read, %d under %s' % (
@@ -694,12 +756,15 @@ def main():
     if unresolved:
         subtrees = {}  # deepest known name -> count
         for oid, n in unresolved.items():
-            key = index.name_of(oid[:n + 1] if n else oid)
+            key = index.name_of(unresolved_cut(oid, n, prefixes))
             subtrees[key] = subtrees.get(key, 0) + 1
         print('warning: %d OIDs not defined by any MIB (count by subtree):' % (
             len(unresolved)), file=err)
         for key, n in sorted(subtrees.items(), key=lambda kv: (-kv[1], kv[0])):
             print('  %6d  %s' % (n, key), file=err)
+    if args.report:
+        print('report: %d lines written to %s; look through it before you share it' % (
+            len(lines), args.report), file=err)
 
     if args.verify:
         reference = finish_tree(ref_proc, progress,

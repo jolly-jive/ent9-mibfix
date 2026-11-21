@@ -161,7 +161,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--no-notifications] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--report FILE] [--load-order] [--no-notifications] [--verify] [-q]
 ```
 
 | Argument | Meaning |
@@ -171,6 +171,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DI
 | `--prefix OID` | Only look at OIDs under this prefix. May be repeated. Default: `1.3.6.1.4.1.9` and `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | Leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |
 | `--archive FILE` | Also pack the files into `FILE` (`.zip`, `.tar.gz`, `.tgz` or `.tar`), in a folder named after the file |
+| `--report FILE` | Also write the walk to `FILE` without its values and table indexes, to attach to an issue (see below) |
 | `--load-order` | List the files so that each one comes after the modules it imports, instead of by name. For managers and MIB browsers that load MIBs one at a time. `--archive` stores them in the same order |
 | `--no-notifications` | Don't add modules for notifications (see below) |
 | `--verify` | Check with Net-SNMP that the listed files are enough (see below). Exits with status 1 if they are not |
@@ -204,6 +205,25 @@ line. A summary, and the OIDs that no MIB defines, go to stderr.
   `CISCO-LWAPP-AP-MIB` and `CISCO-LWAPP-DOT11-MIB`. Their order by name, AP first, is
   also the one that works: DOT11 uses objects from AP in its table indexes, while AP
   uses one object from DOT11 only in a notification.
+
+### Sharing a walk in an issue (`--report`)
+
+Please don't paste a raw walk into an issue. Its values hold host names, addresses
+and serial numbers, and many tables put an IP address, a MAC address or a name into
+the OID itself (`...192.168.1.1`). The paths that the tool prints contain your user
+name. Instead, attach the file that `--report FILE` writes:
+
+```
+python3 extract_mibs.py out/mibs --input walk.txt --report report.txt
+```
+
+- It has no values, only OIDs, one line per object, with the number of OIDs of the
+  walk it stands for. Table indexes are cut off and replaced by `.0`.
+- An OID that no MIB defines is cut one arc below the deepest node a MIB defines
+  (as on stderr). That arc is a number from a MIB, not an index.
+- It has no file paths. Fed back with `--input`, it gives the same list of files.
+
+Look through it before you share it.
 
 ### Checking the result (`--verify`)
 

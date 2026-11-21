@@ -153,7 +153,7 @@ python3 extract_mibs.py out/mibs --verify < walk.txt
 ```
 
 ```
-extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--load-order] [--no-notifications] [--verify] [-q]
+extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DIR] [--archive FILE] [--report FILE] [--load-order] [--no-notifications] [--verify] [-q]
 ```
 
 | 引数 | 意味 |
@@ -163,6 +163,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DI
 | `--prefix OID` | この OID 配下だけを対象にします。複数指定できます。既定は `1.3.6.1.4.1.9` と `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | `DIR`（サブディレクトリを含む）に既にあるモジュールを除きます。Net-SNMP 付属の標準 MIB などに使います。複数指定できます |
 | `--archive FILE` | ファイルを `FILE`（`.zip`、`.tar.gz`、`.tgz`、`.tar`）にもまとめます。中身はファイル名と同じ名前のフォルダに入ります |
+| `--report FILE` | walk から値とテーブルのインデックスを除いたものを `FILE` にも書きます。Issue に添付するためのものです（下記） |
 | `--load-order` | 名前順ではなく、各ファイルを、それが import するモジュールの後になる順で列挙します。MIB を 1 つずつ読み込むマネージャや MIB ブラウザ向けです。`--archive` にも同じ順で格納します |
 | `--no-notifications` | 通知のためのモジュールを追加しません（下記） |
 | `--verify` | 列挙したファイルで足りるかを Net-SNMP で確認します（下記）。足りなければ終了コード 1 で終わります |
@@ -191,6 +192,25 @@ walk は標準入力か `--input FILE` から読みます。必要なファイ�
   `CISCO-LWAPP-DOT11-MIB` の組だけが該当します。名前順で AP が先になり、これで正しく読めます。
   DOT11 は AP のオブジェクトをテーブルのインデックスに使っていますが、AP は DOT11 のオブジェクトを 1 つ、
   通知の中で使っているだけだからです。
+
+### Issue で walk を共有する（`--report`）
+
+walk をそのまま Issue に貼らないでください。値にはホスト名・アドレス・シリアル番号が入っていますし、
+多くのテーブルは IP アドレス・MAC アドレス・名前を OID そのものに入れています（`...192.168.1.1`）。
+ツールが出すファイルのパスにはユーザー名が入ります。代わりに、`--report FILE` が書くファイルを
+添付してください。
+
+```
+python3 extract_mibs.py out/mibs --input walk.txt --report report.txt
+```
+
+- 値は入りません。OID だけを、オブジェクトごとに 1 行、それに当たる walk の OID の数と一緒に書きます。
+  テーブルのインデックスは切り落として `.0` に置き換えます。
+- どの MIB にも定義が無い OID は、MIB が定義している一番深いノードの 1 つ下で切ります（標準エラーと同じ）。
+  その番号は MIB で決まっている番号で、インデックスではありません。
+- ファイルのパスは入りません。`--input` で読ませると、同じファイルの一覧になります。
+
+共有する前に中身を見てください。
 
 ### 結果の確認（`--verify`）
 
