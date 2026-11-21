@@ -1,5 +1,9 @@
 # Runs the tests that need nothing outside the repository. The ones that need
 # out/mibs, samples/ or snmptranslate skip themselves here; run them locally.
+#
+# Actions and images are pinned to exact digests, so a moved tag can't change
+# what runs. Dependabot (.github/dependabot.yml) proposes new action versions;
+# the container images are updated by hand (3.8 is end of life and frozen).
 name: test
 
 on:
@@ -12,22 +16,33 @@ permissions:
 
 jobs:
   linux:
+    name: linux (${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         # the oldest version the README promises, and a current one
-        python: ['3.8', '3.14']
-    container: python:${{ matrix.python }}-slim
+        include:
+          - python: '3.8'
+            image: python:3.8.20-slim@sha256:1d52838af602b4b5a831beb13a0e4d073280665ea7be7f69ce2382f29c5a613f
+          - python: '3.14'
+            image: python:3.14.10-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
+    container: ${{ matrix.image }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: python -m unittest discover -v tests
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - run: python -m unittest discover -v tests
