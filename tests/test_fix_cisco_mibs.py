@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -232,6 +233,19 @@ class GenericFixesTest(TempDirTest):
     def test_capabilities_named_like_module_identity(self):
         self.assertIn('\ntestMIBStmt AGENT-CAPABILITIES', self.text)
         self.assertIn('\ntestMIB MODULE-IDENTITY', self.text)
+
+    def test_trailing_comma_spacing_and_speed(self):
+        self.put('S-MIB.my', module('S-MIB', 'x OBJECT-GROUP\n    OBJECTS { a, b-1 ,\n    }\n'
+                                             '    ::= { iso 1 }\n'
+                                             + 'y' * 200000 + ' -- no comma after it\n'))
+        del fix.CHANGES[:]
+        start = time.monotonic()
+        fix.generic_fixes(self.dir)
+        # the old regex took minutes on a 200,000-character name
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertIn('OBJECTS { a, b-1 \n    }', self.get('S-MIB.my'))
+        self.assertEqual([c['detail'] for c in fix.CHANGES if c['module'] == 'S-MIB'],
+                         ['Extra comma after "b-1", just before "}"'])
 
     def test_log_and_untouched_files(self):
         self.assertEqual(self.kinds(), [('TEST-MIB', 'patched')] * 5)

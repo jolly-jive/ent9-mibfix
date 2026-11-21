@@ -166,7 +166,7 @@ extract_mibs.py MIB_DIR [MIB_DIR ...] [-i FILE] [--prefix OID] [--exclude-dir DI
 
 | Argument | Meaning |
 |---|---|
-| `MIB_DIR` | Directory of MIBs, normally `out/mibs`. May be repeated (for example, to add MIBs that Cisco distributes elsewhere). If several define the same module, the first one wins |
+| `MIB_DIR` | Directory of MIBs, normally `out/mibs`. May be repeated (for example, to add MIBs that Cisco distributes elsewhere). If several define the same module, the first one wins. Every file is read whatever its extension, except binary files and files over 16 MB |
 | `-i`, `--input FILE` | Read the walk from `FILE` instead of stdin. UTF-8, Latin-1, and UTF-16 with a BOM are accepted |
 | `--prefix OID` | Only look at OIDs under this prefix. May be repeated. Default: `1.3.6.1.4.1.9` and `1.3.6.1.4.1.14179` |
 | `--exclude-dir DIR` | Leave out modules that already exist in `DIR` or its subdirectories, such as the standard MIBs that come with Net-SNMP. May be repeated |

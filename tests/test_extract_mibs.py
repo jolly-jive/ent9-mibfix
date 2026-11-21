@@ -216,6 +216,27 @@ class IndexTest(unittest.TestCase):
         self.assertIsNone(index.lookup('A', 'x'))
         self.assertIsNone(index.resolve('A', 'y'))
 
+    def test_parent_cycle(self):
+        defs = {'a': ['OBJECT IDENTIFIER', ['b', 1]], 'b': ['OBJECT IDENTIFIER', ['a', 2]],
+                'c': ['OBJECT IDENTIFIER', ['a', 3]]}
+        index = extract_mibs.OidIndex({'A': {'imports': {}, 'defs': defs, 'notifs': {}, 'path': 'A'}})
+        self.assertIsNone(index.resolve('A', 'c'))
+        self.assertEqual(index.nodes, {})
+
+    def test_long_parent_chain(self):
+        # deeper than Python's recursion limit (1000): the recursive version failed here.
+        # Not much deeper: every node keeps its OID, so memory grows with depth squared.
+        depth = 3000
+        defs = {'n0': ['OBJECT IDENTIFIER', ['iso', 3]]}
+        for i in range(1, depth):
+            defs['n%d' % i] = ['OBJECT IDENTIFIER', ['n%d' % (i - 1), i % 7]]
+        mods = {'D': {'imports': {}, 'defs': dict(reversed(list(defs.items()))),
+                      'notifs': {}, 'path': 'D'}}
+        index = extract_mibs.OidIndex(mods)
+        oid = index.resolve('D', 'n%d' % (depth - 1))
+        self.assertEqual(len(oid), depth + 1)
+        self.assertEqual(oid[:4], (1, 3, 1, 2))
+
 
 class CacheTest(unittest.TestCase):
     def setUp(self):

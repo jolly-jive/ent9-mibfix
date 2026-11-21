@@ -425,12 +425,23 @@ def generic_fixes(outdir):
         # 4c2. trailing comma before a closing brace (code only, not comments)
         mask = code_mask(text)
         edits = []
-        for tm in re.finditer(r'([A-Za-z0-9)-]+)(\s*),(\s*)\}', text):
-            comma = tm.start(3) - 1
-            brace = tm.end() - 1
-            if mask[comma] and mask[brace] and all(mask[k] or text[k].isspace() for k in range(comma, brace)):
+        # Find ", }" first and look back for the name before the comma: a regex
+        # starting at the name takes time growing with the square of the length
+        # of a long run of name characters.
+        for tm in re.finditer(r',\s*\}', text):
+            comma, brace = tm.start(), tm.end() - 1
+            end = comma
+            while end > 0 and text[end - 1].isspace():
+                end -= 1
+            start = end
+            while start > 0 and (text[start - 1].isalnum() and text[start - 1].isascii()
+                                 or text[start - 1] in ')-'):
+                start -= 1
+            if start == end:
+                continue
+            if mask[comma] and mask[brace]:
                 edits.append((comma, comma + 1))
-                log(mod, 'patched', 'Extra comma after "{name}", just before "}}"', name=tm.group(1))
+                log(mod, 'patched', 'Extra comma after "{name}", just before "}}"', name=text[start:end])
         for a, b in sorted(edits, reverse=True):
             text = text[:a] + text[b:]
 

@@ -6,6 +6,7 @@ Not a full ASN.1 parser. It is good enough to find symbols that a MIB module
 uses (SYNTAX types, OID parents, INDEX/AUGMENTS objects, OBJECTS/NOTIFICATIONS
 lists) but neither defines nor imports.
 """
+import os
 import re
 
 ASN1_BUILTIN = {
@@ -27,10 +28,27 @@ DEF_MACROS = (
 )
 
 
+# the largest real MIB we know of is 1.5 MB (CISCO-ENTITY-VENDORTYPE-OID-MIB)
+MAX_SIZE = 16 * 1024 * 1024
+
+
 def read(path):
-    """Text of a MIB file. MIBs are meant to be ASCII; Latin-1 reads any byte."""
-    with open(path, encoding='latin-1') as fh:
-        return fh.read()
+    """Text of a MIB file, or '' if it can't be one: larger than MAX_SIZE, or
+    binary (has a NUL byte, like the .tar.gz files in cisco-mibs/v1 and v2).
+
+    MIBs are meant to be ASCII; Latin-1 reads any byte.
+    """
+    with open(path, 'rb') as fh:
+        size = os.fstat(fh.fileno()).st_size
+        if size > MAX_SIZE:
+            return ''
+        data = fh.read(size + 1)  # not read(MAX_SIZE): that allocates MAX_SIZE every time
+    if len(data) > MAX_SIZE or b'\0' in data:
+        return ''
+    text = data.decode('latin-1')
+    if '\r' in text:  # the newlines text mode would give
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+    return text
 
 
 def comment_spans(text):

@@ -218,35 +218,45 @@ class OidIndex:
             mod = info['imports'][name]
         return self.anywhere.get(name)
 
-    def resolve(self, mod, name, seen=()):
-        key = (mod, name)
-        if key in self.memo:
-            return self.memo[key]
-        if name in ROOTS:
-            return ROOTS[name]
-        owner = self.lookup(mod, name)
-        if owner is None or (owner, name) in seen:
-            return None
-        if owner != mod:
-            oid = self.resolve(owner, name, seen)
-            self.memo[key] = oid
-            return oid
-        _, comps = self.mods[mod]['defs'][name]
-        oid = self.resolve_value(mod, comps, seen + (key,))
-        self.memo[key] = oid
-        return oid
+    def resolve(self, mod, name):
+        """OID tuple of name as seen from mod, or None if it can't be resolved.
 
-    def resolve_value(self, mod, comps, seen):
-        if not comps:
-            return None
-        first, rest = comps[0], comps[1:]
-        if isinstance(first, int):
-            base = (first,)
-        else:
-            base = self.resolve(mod, first, seen)
-            if base is None:
-                return None
-        return base + tuple(rest)
+        Follows the chain of parents in a loop, not by recursion, so that
+        however long a chain a MIB builds, Python's recursion limit is never hit.
+        """
+        chain = []  # (key, arcs that key adds to the OID of the next one)
+        defining = set()  # definitions on the chain, to stop at a circle
+        key = (mod, name)
+        while True:
+            if key in self.memo:
+                oid = self.memo[key]
+                break
+            m, n = key
+            if n in ROOTS:
+                oid = ROOTS[n]
+                break
+            owner = self.lookup(m, n)
+            if owner is None or (owner, n) in defining:
+                oid = None
+                break
+            if owner != m:  # imported: the same OID as in its owner
+                chain.append((key, ()))
+                key = (owner, n)
+                continue
+            defining.add(key)
+            comps = self.mods[m]['defs'][n][1]
+            if not comps:
+                oid = None
+                break
+            chain.append((key, tuple(comps[1:])))
+            if isinstance(comps[0], int):
+                oid = (comps[0],)
+                break
+            key = (m, comps[0])
+        for k, rest in reversed(chain):
+            oid = None if oid is None else oid + rest
+            self.memo[k] = oid
+        return oid
 
     def match(self, oid):
         """Longest defined prefix of oid: (prefix, [(module, name, macro)])."""
